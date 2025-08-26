@@ -1,0 +1,17 @@
+
+# IDE and system files
+.DS_Store
+.idea/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment
+.env
+.venv
+env/
+venv/
