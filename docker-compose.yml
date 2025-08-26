@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database (Shared/Legacy)
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: bambu_monolith
+      POSTGRES_USER: bambu_user
+      POSTGRES_PASSWORD: bambu_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./starter-code/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - bambu-network
+
+  # Redis Cache (Shared/Legacy)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - bambu-network
+
+  # PostgreSQL Database (Notification Service)
+  notification-postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: notification_service
+      POSTGRES_USER: notification_user
+      POSTGRES_PASSWORD: notification_pass
+    ports:
+      - "5433:5432"  # Different port to avoid conflicts
+    volumes:
+      - notification_postgres_data:/var/lib/postgresql/data
+    networks:
+      - bambu-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification_user -d notification_service"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache (Notification Service)
+  notification-redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"  # Different port to avoid conflicts
+    volumes:
+      - notification_redis_data:/data
+    networks:
+      - bambu-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Notification Service (FastAPI)
+  notification-service:
+    build: ./notification-service
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+    volumes:
+      - ./notification-service:/app
+    ports:
+      - "8001:8001"
+    depends_on:
+      notification-postgres:
+        condition: service_healthy
+      notification-redis:
+        condition: service_healthy
+    environment:
+      # Notification Service Database (Dedicated)
+      DATABASE_URL: postgresql://notification_user:notification_pass@notification-postgres:5432/notification_service
+      REDIS_URL: redis://notification-redis:6379/0
+      DEBUG: "True"
+      API_ENV: "development"
+    networks:
+      - bambu-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Django Service (Example from starter-code - Commented out)
+  # Uncomment and modify paths if you want to run the Django service alongside
+  # django:
+  #   build: ./starter-code
+  #   command: python manage.py runserver 0.0.0.0:8000
+  #   volumes:
+  #     - ./starter-code:/code
+  #   ports:
+  #     - "8000:8000"
+  #   depends_on:
+  #     - postgres
+  #     - redis
+  #   environment:
+  #     DATABASE_URL: postgresql://bambu_user:bambu_pass@postgres:5432/bambu_monolith
+  #     REDIS_URL: redis://redis:6379/0
+  #     DEBUG: "True"
+  #     SECRET_KEY: "django-insecure-development-key-change-in-production"
+  #   networks:
+  #     - bambu-network
+
+volumes:
+  postgres_data:                    # Shared/Legacy PostgreSQL
+  notification_postgres_data:       # Notification Service PostgreSQL
+  notification_redis_data:          # Notification Service Redis
+
+networks:
+  bambu-network:
+    driver: bridge
