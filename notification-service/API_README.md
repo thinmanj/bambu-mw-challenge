@@ -1,6 +1,6 @@
 # Notification Service API
 
-This microservice provides REST APIs for managing notifications, templates, and user preferences.
+This microservice provides REST and GraphQL APIs for managing notifications, templates, and user preferences.
 
 ## Base URL
 ```
@@ -11,8 +11,94 @@ http://localhost:8001/api/v1
 Interactive API documentation is available at:
 - **Swagger UI**: http://localhost:8001/docs
 - **ReDoc**: http://localhost:8001/redoc
+- **GraphQL Playground**: http://localhost:8001/graphql
 
 ## API Endpoints
+
+### GraphQL API
+
+The service provides a GraphQL API at `/graphql` that allows you to query and mutate notification data.
+
+#### Example GraphQL Queries
+
+```graphql
+# Get notification by ID
+query {
+  notification(id: "123") {
+    id
+    userId
+    status
+    sentAt
+    templateName
+  }
+}
+
+# Get user notifications
+query {
+  userNotifications(userId: 123) {
+    id
+    status
+    sentAt
+    templateName
+  }
+}
+
+# Get template by ID
+query {
+  template(id: "456") {
+    id
+    name
+    subject
+    body
+    type
+  }
+}
+```
+
+#### Example GraphQL Mutations
+
+```graphql
+# Send a notification
+mutation {
+  sendNotification(
+    userId: 123, 
+    templateName: "welcome_email", 
+    context: {"user_name": "John Doe", "app_name": "MyBambu"}
+  ) {
+    id
+    status
+  }
+}
+
+# Update notification status
+mutation {
+  updateNotificationStatus(
+    id: "123", 
+    status: "sent", 
+    sentAt: "2024-12-27T10:30:00Z"
+  ) {
+    id
+    status
+    sentAt
+  }
+}
+
+# Create template
+mutation {
+  createTemplate(
+    name: "welcome_email", 
+    subject: "Welcome to {app_name}", 
+    body: "Hello {user_name}, welcome to our platform!", 
+    type: "email", 
+    variables: {"app_name": "string", "user_name": "string"}
+  ) {
+    id
+    name
+  }
+}
+```
+
+### REST API Endpoints
 
 ### Notification Management
 
