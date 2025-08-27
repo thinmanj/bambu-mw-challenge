@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Path
 from typing import Optional
+import logging
+import traceback
 from api.v1.schemas import (
     NotificationRequest, NotificationResponse,
     NotificationTemplateCreate, NotificationTemplateUpdate, NotificationTemplate,
@@ -16,18 +18,35 @@ from database.dependencies import (
     get_notification_log_service, get_user_preference_service
 )
 
+# Configure comprehensive logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler("notification_service.log")
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
 # Notifications Management Router
 notifications_router = APIRouter(prefix="/notifications", tags=["notifications"])
 
-@notifications_router.post("/send", response_model=NotificationLog)
+@notifications_router.post("/send", response_model=NotificationResponse)
 async def send_notification(
     request: NotificationRequest,
     service: NotificationService = Depends(get_notification_service)
 ):
     """Send a notification"""
+    logger.info(f" Sending notification - user_id: {request.user_id}, template: {request.template_name}")
     try:
-        return await service.send_notification(request)
+        result = await service.send_notification(request)
+        logger.info(f" Notification sent successfully - id: {result.id}, status: {result.status}, user_id: {request.user_id}")
+        return result
     except Exception as e:
+        logger.error(f" Failed to send notification - user_id: {request.user_id}, template: {request.template_name}, error: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @notifications_router.get("/{id}", response_model=NotificationLog)
@@ -36,10 +55,20 @@ async def get_notification_details(
     service: NotificationLogService = Depends(get_notification_log_service)
 ):
     """Get notification details"""
-    notification = await service.get_log(id)
-    if not notification:
-        raise HTTPException(status_code=404, detail="Notification not found")
-    return notification
+    logger.info(f" Getting notification details - id: {id}")
+    try:
+        notification = await service.get_log(id)
+        if not notification:
+            logger.warning(f" Notification not found - id: {id}")
+            raise HTTPException(status_code=404, detail="Notification not found")
+        logger.info(f" Notification retrieved - id: {id}, user_id: {notification.user_id}")
+        return notification
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f" Error getting notification details - id: {id}, error: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @notifications_router.get("/user/{user_id}", response_model=NotificationLogList)
 async def list_user_notifications(
@@ -75,7 +104,15 @@ async def list_templates(
     service: NotificationTemplateService = Depends(get_notification_template_service)
 ):
     """List all templates"""
-    return await service.list_templates(page, size, type_filter)
+    logger.info(f" Listing templates - page: {page}, size: {size}, filter: {type_filter}")
+    try:
+        result = await service.list_templates(page, size, type_filter)
+        logger.info(f" Templates retrieved - total: {result.total}")
+        return result
+    except Exception as e:
+        logger.error(f" Error listing templates - error: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @templates_router.post("/", response_model=NotificationTemplate, status_code=201)
 async def create_template(
@@ -83,12 +120,18 @@ async def create_template(
     service: NotificationTemplateService = Depends(get_notification_template_service)
 ):
     """Create new template"""
+    logger.info(f" Creating template - name: {template_data.name}, type: {template_data.type}")
     try:
-        return await service.create_template(template_data)
+        result = await service.create_template(template_data)
+        logger.info(f" Template created successfully - id: {result.id}, name: {result.name}")
+        return result
     except Exception as e:
         # Handle unique constraint violations
         if "unique" in str(e).lower():
+            logger.error(f" Template name conflict - name: {template_data.name}")
             raise HTTPException(status_code=400, detail="Template name already exists")
+        logger.error(f" Error creating template - name: {template_data.name}, error: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @templates_router.get("/{id}", response_model=NotificationTemplate)
