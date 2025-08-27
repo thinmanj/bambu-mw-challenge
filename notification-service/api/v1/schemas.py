@@ -57,7 +57,7 @@ class NotificationLogBase(BaseModel):
     status: NotificationStatus = Field(NotificationStatus.PENDING, description="Notification status")
     sent_at: Optional[datetime] = Field(None, description="When notification was sent")
     error_message: Optional[str] = Field(None, description="Error message if failed")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    notification_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
 
 class NotificationLogCreate(NotificationLogBase):
@@ -68,7 +68,7 @@ class NotificationLogUpdate(BaseModel):
     status: Optional[NotificationStatus] = Field(None, description="Notification status")
     sent_at: Optional[datetime] = Field(None, description="When notification was sent")
     error_message: Optional[str] = Field(None, description="Error message if failed")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    notification_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
 
 class NotificationLog(NotificationLogBase, BaseSchema):

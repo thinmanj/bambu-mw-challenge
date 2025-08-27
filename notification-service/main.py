@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from api.v1 import api_v1_router
+from api.v1.middleware import RateLimitHeadersMiddleware
 from database.connection import get_redis_client, close_redis_client, get_engine, close_database
 
 # Initialize FastAPI app
@@ -28,13 +29,29 @@ app = FastAPI(
     ],
 )
 
-# Add CORS middleware
+# Add middleware in correct order (reverse order of execution)
+# Note: Middleware is executed in reverse order of addition
+
+# 1. CORS middleware (executed first)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Configure for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# 2. Rate limiting headers middleware (executed second)
+app.add_middleware(
+    RateLimitHeadersMiddleware,
+    enabled=True,
+    per_minute=100,
+    per_hour=1000,
+    endpoint_limits={
+        "/api/v1/notifications/send": {"per_minute": 50, "per_hour": 500},
+        "/api/v1/templates": {"per_minute": 30, "per_hour": 300},
+        "/api/v1/preferences": {"per_minute": 20, "per_hour": 200},
+    }
 )
 
 # Include versioned API routers
