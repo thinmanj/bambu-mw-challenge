@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from api.v1 import api_v1_router
-from database.connection import get_redis_client, close_redis_client
+from database.connection import get_redis_client, close_redis_client, get_engine, close_database
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -11,7 +11,21 @@ app = FastAPI(
     description="Microservice for handling notifications (email, SMS, push)",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    openapi_tags=[
+        {
+            "name": "notifications",
+            "description": "Notification management operations",
+        },
+        {
+            "name": "templates",
+            "description": "Template management operations",
+        },
+        {
+            "name": "preferences",
+            "description": "User preference management operations",
+        },
+    ],
 )
 
 # Add CORS middleware
@@ -29,6 +43,8 @@ app.include_router(api_v1_router)
 @app.on_event("startup")
 async def startup_event():
     """Initialize connections on startup"""
+    # Initialize database engine
+    get_engine()
     # Initialize Redis connection
     await get_redis_client()
 
@@ -36,6 +52,7 @@ async def startup_event():
 async def shutdown_event():
     """Clean up connections on shutdown"""
     await close_redis_client()
+    await close_database()
 
 @app.get("/")
 async def root():

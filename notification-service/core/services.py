@@ -5,10 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from math import ceil
 
 from core.models import (
-    NotificationTemplate, NotificationLog, UserPreference,
-    NotificationRequest, NotificationResponse, NotificationStatus, NotificationStatusResponse
+    NotificationTemplate, NotificationLog, UserPreference, NotificationStatus
 )
-from core.schemas import (
+from api.v1.schemas import (
+    NotificationRequest, NotificationResponse,
     NotificationTemplateCreate, NotificationTemplateUpdate,
     NotificationLogCreate, NotificationLogUpdate,
     UserPreferenceCreate, UserPreferenceUpdate,
@@ -232,18 +232,3 @@ class NotificationService:
             created_at=created_at
         )
     
-    async def get_notification_status(self, notification_id: str) -> NotificationStatusResponse:
-        """Get notification status"""
-        redis_client = await get_redis_client()
-        notification_data = await redis_client.hgetall(f"notification:{notification_id}")
-        
-        if not notification_data:
-            raise ValueError(f"Notification {notification_id} not found")
-        
-        return NotificationStatusResponse(
-            id=notification_data["id"],
-            status=NotificationStatus(notification_data["status"]),
-            created_at=datetime.fromisoformat(notification_data["created_at"]),
-            updated_at=datetime.fromisoformat(notification_data["updated_at"]),
-            error_message=notification_data.get("error_message")
-        )

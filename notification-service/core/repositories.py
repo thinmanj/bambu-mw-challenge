@@ -5,7 +5,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy import and_, desc, func
 
 from core.models import NotificationTemplate, NotificationLog, UserPreference
-from core.schemas import (
+from api.v1.schemas import (
     NotificationTemplateCreate, NotificationTemplateUpdate,
     NotificationLogCreate, NotificationLogUpdate,
     UserPreferenceCreate, UserPreferenceUpdate
