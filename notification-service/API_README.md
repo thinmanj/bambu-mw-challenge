@@ -4,14 +4,44 @@ This microservice provides REST and GraphQL APIs for managing notifications, tem
 
 ## Base URL
 ```
-http://localhost:8001/api/v1
+http://localhost:8003/api/v1
 ```
+
+## Rate Limiting
+
+The Bambu Notification Service enforces rate limiting to protect the API from abuse and ensure fair usage.
+
+### Rate Limiting Overview
+
+- **Global default limits**: 100 requests per minute, 1000 requests per hour
+- **Endpoint-specific limits**:
+  - `/api/v1/notifications/send`: 50 requests per minute, 500 requests per hour
+  - `/api/v1/templates`: 30 requests per minute, 300 requests per hour
+  - `/api/v1/preferences`: 20 requests per minute, 200 requests per hour
+- **No rate limiting on health and docs endpoints:** `/`, `/health`, `/docs`, `/redoc`, `/openapi.json`, `/favicon.ico` are excluded
+
+### Rate Limiting Headers
+
+The service provides the following HTTP response headers to inform clients about their current rate limiting status:
+
+| Header | Description |
+| --- | --- |
+| `X-RateLimit-Limit` | Total allowed requests in the current window |
+| `X-RateLimit-Remaining` | Remaining requests in the current window |
+| `X-RateLimit-Reset` | Timestamp when the rate limit window resets |
+| `X-RateLimit-Window` | Duration of the rate limit window in seconds |
+| `X-RateLimit-Limit-Minute` | Allowed requests per minute |
+| `X-RateLimit-Remaining-Minute` | Remaining requests for the current minute |
+| `X-RateLimit-Limit-Hour` | Allowed requests per hour |
+| `X-RateLimit-Remaining-Hour` | Remaining requests for the current hour |
+
+Clients should respect these headers to avoid hitting rate limits which may result in HTTP 429 (Too Many Requests) responses.
 
 ## API Documentation
 Interactive API documentation is available at:
-- **Swagger UI**: http://localhost:8001/docs
-- **ReDoc**: http://localhost:8001/redoc
-- **GraphQL Playground**: http://localhost:8001/graphql
+- **Swagger UI**: http://localhost:8003/docs
+- **ReDoc**: http://localhost:8003/redoc
+- **GraphQL Playground**: http://localhost:8003/graphql
 
 ## API Endpoints
 
@@ -259,17 +289,17 @@ Paginated response format:
 python main_demo.py
 
 # Or production version
-uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+uvicorn main:app --host 0.0.0.0 --port 8003 --reload
 ```
 
 2. Visit the interactive documentation:
 ```
-http://localhost:8001/docs
+http://localhost:8003/docs
 ```
 
 3. Create your first template:
 ```bash
-curl -X POST "http://localhost:8001/api/v1/templates" \
+curl -X POST "http://localhost:8003/api/v1/templates" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "order_confirmation",
@@ -282,7 +312,7 @@ curl -X POST "http://localhost:8001/api/v1/templates" \
 
 4. Send a notification using the template:
 ```bash
-curl -X POST "http://localhost:8001/api/v1/notifications/send" \
+curl -X POST "http://localhost:8003/api/v1/notifications/send" \
   -H "Content-Type: application/json" \
   -d '{
     "user_id": 123,
