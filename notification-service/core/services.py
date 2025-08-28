@@ -198,37 +198,206 @@ class UserPreferenceService:
 
 
 class NotificationService:
-    """Legacy notification service for backward compatibility"""
+    """Enhanced notification service with dynamic adapter loading and template support"""
     
-    async def send_notification(self, request: NotificationRequest) -> NotificationResponse:
-        """Send a notification (minimal implementation)"""
+    def __init__(self, db: AsyncSession):
+        self.db = db
+        self.template_service = NotificationTemplateService(db)
+        self.log_service = NotificationLogService(db)
+        self.preference_service = UserPreferenceService(db)
+        self.adapters = {}
+        self._load_adapters()
+    
+    def _load_adapters(self):
+        """Dynamically load all adapters from the adapters directory"""
+        import os
+        import importlib
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        adapters_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'adapters')
+        
+        if not os.path.exists(adapters_dir):
+            logger.warning(f"⚠️ Adapters directory not found: {adapters_dir}")
+            return
+        
+        logger.info(f"🔍 Loading adapters from: {adapters_dir}")
+        
+        for filename in os.listdir(adapters_dir):
+            if filename.endswith('.py') and not filename.startswith('__'):
+                adapter_name = filename[:-3]  # Remove .py extension
+                
+                try:
+                    # Import the module
+                    module = importlib.import_module(f'adapters.{adapter_name}')
+                    
+                    # Look for a class with 'Provider' in the name
+                    provider_class = None
+                    for attr_name in dir(module):
+                        attr = getattr(module, attr_name)
+                        if (isinstance(attr, type) and 
+                            'provider' in attr_name.lower() and 
+                            hasattr(attr, 'send')):
+                            provider_class = attr
+                            break
+                    
+                    if provider_class:
+                        # Initialize the provider
+                        provider_instance = provider_class()
+                        self.adapters[adapter_name] = provider_instance
+                        logger.info(f"✅ Loaded {adapter_name} adapter: {provider_class.__name__}")
+                    else:
+                        logger.warning(f"⚠️ No provider class found in {adapter_name}.py")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Failed to load {adapter_name} adapter: {e}")
+        
+        logger.info(f"📦 Loaded {len(self.adapters)} adapters: {list(self.adapters.keys())}")
+    
+    def _render_template(self, template_content: str, context: Dict[str, Any]) -> str:
+        """Simple template rendering using string formatting"""
+        try:
+            # Simple variable substitution using {variable_name} format
+            return template_content.format(**context)
+        except KeyError as e:
+            # If a variable is missing, leave it as is and log a warning
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"⚠️ Template variable not found in context: {e}")
+            return template_content
+    
+    async def send_notification(
+        self, 
+        user_id: int, 
+        template_name: str, 
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Send a notification using template and context"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         notification_id = str(uuid.uuid4())
         created_at = datetime.utcnow()
         
-        # Store notification status in Redis for quick lookup
-        redis_client = await get_redis_client()
-        notification_data = {
-            "id": notification_id,
-            "status": NotificationStatus.PENDING.value,
-            "recipient": request.recipient,
-            "type": request.type.value,
-            "message": request.message,
-            "created_at": created_at.isoformat(),
-            "updated_at": created_at.isoformat()
-        }
-        
-        await redis_client.hset(
-            f"notification:{notification_id}",
-            mapping=notification_data
-        )
-        
-        # TODO: Implement actual sending logic using adapters
-        # For now, just return a pending response
-        
-        return NotificationResponse(
-            id=notification_id,
-            status=NotificationStatus.PENDING,
-            message=f"Notification queued for {request.recipient}",
-            created_at=created_at
-        )
-    
+        try:
+            # Get the notification template
+            template = await self.template_service.get_template_by_name(template_name)
+            if not template:
+                error_msg = f"Template '{template_name}' not found"
+                logger.error(f"❌ {error_msg}")
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "notification_id": notification_id
+                }
+            
+            # Check user preferences (optional - don't block if missing)
+            user_prefs = await self.preference_service.get_user_preference(user_id)
+            if user_prefs:
+                # Check if user has disabled this type of notification
+                notification_enabled = getattr(user_prefs, f"{template.type}_enabled", True)
+                if not notification_enabled:
+                    logger.info(f"⏭️ User {user_id} has disabled {template.type} notifications")
+                    return {
+                        "success": False,
+                        "error": f"User has disabled {template.type} notifications",
+                        "notification_id": notification_id,
+                        "skipped": True
+                    }
+            
+            # Get the appropriate adapter
+            adapter = self.adapters.get(template.type)
+            if not adapter:
+                error_msg = f"No adapter found for type '{template.type}'"
+                logger.error(f"❌ {error_msg}")
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "notification_id": notification_id
+                }
+            
+            # Render template content
+            rendered_subject = self._render_template(template.subject, context)
+            rendered_body = self._render_template(template.body, context)
+            
+            # Prepare adapter context with rendered content
+            adapter_context = {
+                **context,  # Original context
+                'subject': rendered_subject,
+                'body': rendered_body,
+                'message': rendered_body,  # Alias for SMS/Push
+                'title': rendered_subject,  # Alias for Push notifications
+            }
+            
+            # Log the notification attempt
+            log_data = NotificationLogCreate(
+                id=notification_id,
+                user_id=user_id,
+                template_name=template_name,
+                notification_type=template.type,
+                status=NotificationStatus.PENDING,
+                created_at=created_at
+            )
+            notification_log = await self.log_service.create_log(log_data)
+            
+            # Send using the adapter
+            logger.info(f"📤 Sending {template.type} notification to user {user_id} using template '{template_name}'")
+            result = adapter.send(adapter_context)
+            
+            # Update the log based on result
+            if result.get('success'):
+                await self.log_service.update_log(
+                    notification_log.id,
+                    NotificationLogUpdate(
+                        status=NotificationStatus.SENT,
+                        sent_at=datetime.utcnow(),
+                        response_data=result
+                    )
+                )
+                
+                logger.info(f"✅ Successfully sent {template.type} notification {notification_id}")
+                return {
+                    "success": True,
+                    "notification_id": notification_id,
+                    "type": template.type,
+                    "template_name": template_name,
+                    "adapter_result": result
+                }
+            else:
+                await self.log_service.update_log(
+                    notification_log.id,
+                    NotificationLogUpdate(
+                        status=NotificationStatus.FAILED,
+                        error_message=result.get('error', 'Unknown error'),
+                        response_data=result
+                    )
+                )
+                
+                logger.error(f"❌ Failed to send {template.type} notification {notification_id}: {result.get('error')}")
+                return {
+                    "success": False,
+                    "notification_id": notification_id,
+                    "error": result.get('error'),
+                    "adapter_result": result
+                }
+                
+        except Exception as e:
+            logger.error(f"💥 Unexpected error sending notification {notification_id}: {e}")
+            
+            # Try to update log if it was created
+            try:
+                await self.log_service.update_log(
+                    notification_id,
+                    NotificationLogUpdate(
+                        status=NotificationStatus.FAILED,
+                        error_message=str(e)
+                    )
+                )
+            except:
+                pass  # Log update failed, but don't mask the original error
+            
+            return {
+                "success": False,
+                "notification_id": notification_id,
+                "error": str(e)
+            }

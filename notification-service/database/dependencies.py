@@ -39,6 +39,8 @@ async def get_user_preference_service(
     return UserPreferenceService(db)
 
 
-async def get_notification_service() -> NotificationService:
-    """Get legacy notification service"""
-    return NotificationService()
+async def get_notification_service(
+    db: AsyncSession = Depends(get_db)
+) -> NotificationService:
+    """Get notification service with database session"""
+    return NotificationService(db)

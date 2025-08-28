@@ -3,7 +3,7 @@ from typing import Optional
 import logging
 import traceback
 from api.v1.schemas import (
-    NotificationRequest, NotificationResponse,
+    NotificationRequest, NotificationResponse, SendNotificationResponse,
     NotificationTemplateCreate, NotificationTemplateUpdate, NotificationTemplate,
     NotificationTemplateList, NotificationLogCreate, NotificationLogUpdate,
     NotificationLog, NotificationLogList, UserPreferenceCreate,
@@ -33,19 +33,43 @@ logger = logging.getLogger(__name__)
 # Notifications Management Router
 notifications_router = APIRouter(prefix="/notifications", tags=["notifications"])
 
-@notifications_router.post("/send", response_model=NotificationResponse)
+@notifications_router.post("/send", response_model=SendNotificationResponse)
 async def send_notification(
     request: NotificationRequest,
     service: NotificationService = Depends(get_notification_service)
 ):
-    """Send a notification"""
-    logger.info(f" Sending notification - user_id: {request.user_id}, template: {request.template_name}")
+    """Send a notification using a template"""
+    logger.info(f"📤 Sending notification - user_id: {request.user_id}, template: {request.template_name}")
     try:
-        result = await service.send_notification(request)
-        logger.info(f" Notification sent successfully - id: {result.id}, status: {result.status}, user_id: {request.user_id}")
-        return result
+        result = await service.send_notification(
+            user_id=request.user_id,
+            template_name=request.template_name,
+            context=request.context
+        )
+        
+        status_code = 200 if result["success"] else 400
+        
+        response = SendNotificationResponse(
+            success=result["success"],
+            notification_id=result["notification_id"],
+            error=result.get("error"),
+            type=result.get("type"),
+            template_name=result.get("template_name"),
+            skipped=result.get("skipped", False),
+            message=f"Notification {'sent' if result['success'] else 'failed'}" if not result.get("skipped") else "Notification skipped due to user preferences"
+        )
+        
+        if result["success"]:
+            logger.info(f"✅ Notification sent successfully - id: {result['notification_id']}, user_id: {request.user_id}")
+        elif result.get("skipped"):
+            logger.info(f"⏭️ Notification skipped - id: {result['notification_id']}, user_id: {request.user_id}")
+        else:
+            logger.error(f"❌ Notification failed - id: {result['notification_id']}, user_id: {request.user_id}, error: {result.get('error')}")
+        
+        return response
+        
     except Exception as e:
-        logger.error(f" Failed to send notification - user_id: {request.user_id}, template: {request.template_name}, error: {str(e)}")
+        logger.error(f"💥 Failed to send notification - user_id: {request.user_id}, template: {request.template_name}, error: {str(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 

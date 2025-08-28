@@ -21,6 +21,15 @@ class NotificationResponse(BaseModel):
     message: str
     created_at: datetime
 
+class SendNotificationResponse(BaseModel):
+    success: bool
+    notification_id: str
+    message: Optional[str] = None
+    error: Optional[str] = None
+    type: Optional[str] = None
+    template_name: Optional[str] = None
+    skipped: Optional[bool] = False
+
 
 # Notification Template Schemas
 class NotificationTemplateBase(BaseModel):
@@ -60,8 +69,17 @@ class NotificationLogBase(BaseModel):
     notification_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
 
-class NotificationLogCreate(NotificationLogBase):
-    pass
+class NotificationLogCreate(BaseModel):
+    id: Optional[str] = Field(None, description="Notification ID")
+    user_id: int = Field(..., description="User ID")
+    template_name: str = Field(..., description="Template name")
+    notification_type: str = Field(..., description="Notification type")
+    status: NotificationStatus = Field(NotificationStatus.PENDING, description="Notification status")
+    created_at: Optional[datetime] = Field(None, description="Creation timestamp")
+    template_id: Optional[int] = Field(None, description="Template ID")
+    sent_at: Optional[datetime] = Field(None, description="When notification was sent")
+    error_message: Optional[str] = Field(None, description="Error message if failed")
+    response_data: Optional[Dict[str, Any]] = Field(None, description="Response data from provider")
 
 
 class NotificationLogUpdate(BaseModel):
@@ -69,6 +87,7 @@ class NotificationLogUpdate(BaseModel):
     sent_at: Optional[datetime] = Field(None, description="When notification was sent")
     error_message: Optional[str] = Field(None, description="Error message if failed")
     notification_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    response_data: Optional[Dict[str, Any]] = Field(None, description="Response data from provider")
 
 
 class NotificationLog(NotificationLogBase, BaseSchema):

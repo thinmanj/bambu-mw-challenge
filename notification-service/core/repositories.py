@@ -18,7 +18,7 @@ class NotificationTemplateRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
     
-    async def get_by_id(self, template_id: int) -> Optional[NotificationTemplate]:
+        async def get_by_id(self, template_id: int) -> Optional[NotificationTemplate]:
         """Get template by ID"""
         result = await self.db.execute(
             select(NotificationTemplate).where(NotificationTemplate.id == template_id)
