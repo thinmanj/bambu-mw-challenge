@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from api.v1 import api_v1_router
 from api.v1.middleware import RateLimitHeadersMiddleware
+from api.health import health_router, mark_startup_complete
 from database.connection import get_redis_client, close_redis_client, get_engine, close_database
 
 # Initialize FastAPI app
@@ -56,6 +57,7 @@ app.add_middleware(
 
 # Include versioned API routers
 app.include_router(api_v1_router)
+app.include_router(health_router)
 
 @app.on_event("startup")
 async def startup_event():
@@ -64,6 +66,8 @@ async def startup_event():
     get_engine()
     # Initialize Redis connection
     await get_redis_client()
+    # Mark startup as complete for health checks
+    mark_startup_complete()
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -82,17 +86,7 @@ async def root():
         "api_base_url": "/api/v1"
     }
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint for container orchestration"""
-    # TODO: Add database and redis connectivity checks
-    return {
-        "status": "healthy",
-        "service": "notification-service",
-        "database": "connected",  # Will be implemented
-        "cache": "connected"      # Will be implemented
-    }
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8001))
+    port = int(os.getenv("PORT", 8003))
     uvicorn.run(app, host="0.0.0.0", port=port, reload=True)

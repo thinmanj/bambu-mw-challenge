@@ -18,7 +18,7 @@ The Bambu Notification Service enforces rate limiting to protect the API from ab
   - `/api/v1/notifications/send`: 50 requests per minute, 500 requests per hour
   - `/api/v1/templates`: 30 requests per minute, 300 requests per hour
   - `/api/v1/preferences`: 20 requests per minute, 200 requests per hour
-- **No rate limiting on health and docs endpoints:** `/`, `/health`, `/docs`, `/redoc`, `/openapi.json`, `/favicon.ico` are excluded
+- **No rate limiting on health and docs endpoints:** `/`, `/health`, `/health/live`, `/health/ready`, `/health/startup`, `/docs`, `/redoc`, `/openapi.json`, `/favicon.ico` are excluded
 
 ### Rate Limiting Headers
 
@@ -42,6 +42,75 @@ Interactive API documentation is available at:
 - **Swagger UI**: http://localhost:8003/docs
 - **ReDoc**: http://localhost:8003/redoc
 - **GraphQL Playground**: http://localhost:8003/graphql
+
+## Health Check Endpoints
+
+The service provides multiple health check endpoints designed for different monitoring and orchestration needs:
+
+### Kubernetes Health Probes
+
+#### Liveness Probe
+```http
+GET /health/live
+```
+Indicates if the service process is running. Returns 200 if the service is alive.
+Kubernetes will restart the pod if this fails.
+
+#### Readiness Probe
+```http
+GET /health/ready
+```
+Indicates if the service is ready to accept requests. Performs dependency checks (database, Redis).
+Kubernetes will not route traffic to the pod if this fails.
+
+#### Startup Probe
+```http
+GET /health/startup
+```
+Indicates if the service has completed initialization.
+Kubernetes will not perform liveness/readiness checks until this succeeds.
+
+#### Legacy Health Check
+```http
+GET /health
+```
+Backward-compatible health check endpoint that combines basic liveness and readiness information.
+
+### Health Response Examples
+
+**Liveness Check Response:**
+```json
+{
+  "status": "alive",
+  "service": "notification-service",
+  "timestamp": "2024-12-27T10:30:00.123456",
+  "uptime_seconds": 3600.5
+}
+```
+
+**Readiness Check Response:**
+```json
+{
+  "status": "ready",
+  "service": "notification-service",
+  "timestamp": "2024-12-27T10:30:00.123456",
+  "checks": {
+    "database": "healthy",
+    "redis": "healthy"
+  }
+}
+```
+
+**Startup Check Response:**
+```json
+{
+  "status": "started",
+  "service": "notification-service",
+  "timestamp": "2024-12-27T10:30:00.123456",
+  "startup_time": "2024-12-27T10:25:30.123456",
+  "initialization_duration_seconds": 270.0
+}
+```
 
 ## API Endpoints
 
