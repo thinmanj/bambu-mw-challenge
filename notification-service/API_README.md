@@ -4,7 +4,7 @@ This microservice provides REST and GraphQL APIs for managing notifications, tem
 
 ## Base URL
 ```
-http://localhost:8003/api/v1
+http://localhost:8001/api/v1
 ```
 
 ## Rate Limiting
@@ -81,6 +81,40 @@ Backward-compatible health check endpoint that combines basic liveness and readi
 GET /health/bulkhead
 ```
 Provides detailed health information about the BulkheadExecutor resilience system, including per-partition metrics and overall status for monitoring notification channel health.
+
+## Resilience & Retry Features
+
+The notification service includes comprehensive resilience features to ensure reliable delivery:
+
+### Automatic Retry with Exponential Backoff
+
+All notification adapters (Email, SMS, Push) automatically retry failed requests using the [Tenacity](https://tenacity.readthedocs.io/) library:
+
+- **Exponential Backoff**: Delays between retries grow exponentially (1s, 2s, 4s, ...)
+- **Smart Error Classification**: Distinguishes between retryable and non-retryable errors
+- **Configurable**: Maximum attempts (default: 3), backoff factor (default: 2x), max delay (default: 30s)
+
+**Example retry sequence:**
+```
+2024-12-27 10:30:01 [INFO] Attempting email send to user@example.com
+2024-12-27 10:30:01 [WARN] Email send failed: API timeout - retrying in 1s
+2024-12-27 10:30:02 [WARN] Email send failed: API timeout - retrying in 2s  
+2024-12-27 10:30:04 [INFO] Email sent successfully on attempt 3
+```
+
+### Error Classification
+
+**Retryable Errors** (will be retried):
+- API timeouts and rate limits
+- Network connectivity issues 
+- Server errors (5xx)
+- Connection refused/DNS failures
+
+**Non-Retryable Errors** (will not be retried):
+- Invalid API credentials (401)
+- Malformed data (400)
+- Invalid email/phone/device tokens
+- Resource not found (404)
 
 ### Health Response Examples
 

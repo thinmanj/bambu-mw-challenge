@@ -1,43 +1,36 @@
 import logging
 from typing import Dict, Any
+from core.resilience.base_adapter import BaseNotificationAdapter
+from core.resilience.retry import RetryableError, NonRetryableError
 
 logger = logging.getLogger(__name__)
 
-class SMSProvider:
-    """Simple SMS provider - would normally use Twilio, etc."""
+class SMSProvider(BaseNotificationAdapter):
+    """SMS provider with automatic retry."""
     
     def __init__(self):
+        super().__init__("sms")
         logger.info("📱 SMSProvider initialized")
     
-    def send(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Send SMS notification.
-        Expected context keys: phone_number, message
-        """
+    def _send_impl(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Send SMS notification."""
         phone_number = context.get('phone_number') or context.get('recipient')
         message = context.get('message') or context.get('body', '')
         
-        if not phone_number:
-            logger.error("❌ SMS sending failed: missing phone number")
-            return {
-                "success": False,
-                "error": "Missing recipient phone number",
-                "provider": "sms"
-            }
+        # SMS-specific validation
+        if phone_number and not (phone_number.startswith('+') or phone_number.replace('-', '').replace(' ', '').isdigit()):
+            raise NonRetryableError("Invalid phone number format")
         
-        if not message:
-            logger.error("❌ SMS sending failed: missing message")
-            return {
-                "success": False,
-                "error": "Missing message content",
-                "provider": "sms"
-            }
+        # Simulate potential failures for testing
+        import random
+        if random.random() < 0.08:  # 8% chance of retryable error
+            raise RetryableError("SMS API rate limit exceeded")
+        elif random.random() < 0.04:  # 4% chance of non-retryable error
+            raise NonRetryableError("Phone number is blocked or invalid")
         
-        # Simulated SMS sending
+        # Simulate successful sending
         logger.info(f"📱 Sending SMS to {phone_number}: {message[:50]}..." if len(message) > 50 else f"📱 Sending SMS to {phone_number}: {message}")
         
-        # In real implementation, this would call Twilio API
-        # For now, simulate successful sending
         return {
             "success": True,
             "message_id": f"sms_msg_{hash(phone_number + message)}",

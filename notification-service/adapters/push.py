@@ -1,45 +1,37 @@
 import logging
 from typing import Dict, Any
+from core.resilience.base_adapter import BaseNotificationAdapter
+from core.resilience.retry import RetryableError, NonRetryableError
 
 logger = logging.getLogger(__name__)
 
-class PushProvider:
-    """Simple push notification provider - would normally use FCM, APNS, etc."""
+class PushProvider(BaseNotificationAdapter):
+    """Push notification provider with automatic retry."""
     
     def __init__(self):
+        super().__init__("push")
         logger.info("📢 PushProvider initialized")
     
-    def send(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Send push notification.
-        Expected context keys: device_token, title, message
-        """
+    def _send_impl(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Send push notification."""
         device_token = context.get('device_token') or context.get('recipient')
         title = context.get('title', 'Notification')
         message = context.get('message') or context.get('body', '')
         
-        if not device_token:
-            logger.error("❌ Push notification failed: missing device token")
-            return {
-                "success": False,
-                "error": "Missing recipient device token",
-                "provider": "push"
-            }
+        # Push-specific validation
+        if device_token and len(device_token) < 10:
+            raise NonRetryableError("Device token too short")
         
-        if not message:
-            logger.error("❌ Push notification failed: missing message")
-            return {
-                "success": False,
-                "error": "Missing message content",
-                "provider": "push"
-            }
+        # Simulate potential failures for testing
+        import random
+        if random.random() < 0.09:  # 9% chance of retryable error
+            raise RetryableError("FCM server temporarily unavailable")
+        elif random.random() < 0.04:  # 4% chance of non-retryable error
+            raise NonRetryableError("Device token is invalid or unregistered")
         
-        # Simulated push sending
+        # Simulate successful sending
         logger.info(f"📢 Sending push to {device_token[:20]}...: {title}")
-        logger.debug(f"📢 Push message: {message[:100]}..." if len(message) > 100 else f"📢 Push message: {message}")
         
-        # In real implementation, this would call FCM/APNS
-        # For now, simulate successful sending
         return {
             "success": True,
             "message_id": f"push_msg_{hash(device_token + title + message)}",
