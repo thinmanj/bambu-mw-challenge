@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database (Shared/Legacy)
   postgres:
@@ -62,7 +60,6 @@ services:
   # Notification Service (FastAPI)
   notification-service:
     build: ./notification-service
-    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
     volumes:
       - ./notification-service:/app
     ports:
@@ -74,10 +71,13 @@ services:
         condition: service_healthy
     environment:
       # Notification Service Database (Dedicated)
-      DATABASE_URL: postgresql://notification_user:notification_pass@notification-postgres:5432/notification_service
+      DATABASE_URL: postgresql+asyncpg://notification_user:notification_pass@notification-postgres:5432/notification_service
       REDIS_URL: redis://notification-redis:6379/0
       DEBUG: "True"
       API_ENV: "development"
+      LOG_LEVEL: "info"
+      PORT: "8001"
+      RUN_MIGRATIONS: "true"
     networks:
       - bambu-network
     healthcheck:

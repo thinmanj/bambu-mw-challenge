@@ -19,6 +19,7 @@ from core.repositories import (
     NotificationLogRepository,
     UserPreferenceRepository,
 )
+from core.resilience.bulkhead import get_bulkhead_executor
 from database.connection import get_redis_client
 
 
@@ -272,8 +273,9 @@ class NotificationService:
         template_name: str, 
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Send a notification using template and context"""
+        """Send a notification using template and context with BulkheadExecutor for resilience"""
         import logging
+        import traceback
         logger = logging.getLogger(__name__)
         
         notification_id = str(uuid.uuid4())
@@ -317,7 +319,7 @@ class NotificationService:
                 }
             
             # Render template content
-            rendered_subject = self._render_template(template.subject, context)
+            rendered_subject = self._render_template(template.subject or "", context)
             rendered_body = self._render_template(template.body, context)
             
             # Prepare adapter context with rendered content
@@ -340,49 +342,113 @@ class NotificationService:
             )
             notification_log = await self.log_service.create_log(log_data)
             
-            # Send using the adapter
-            logger.info(f"📤 Sending {template.type} notification to user {user_id} using template '{template_name}'")
-            result = adapter.send(adapter_context)
+            # Get the bulkhead executor for resilience
+            bulkhead_executor = get_bulkhead_executor()
             
-            # Update the log based on result
-            if result.get('success'):
-                await self.log_service.update_log(
-                    notification_log.id,
-                    NotificationLogUpdate(
-                        status=NotificationStatus.SENT,
-                        sent_at=datetime.utcnow(),
-                        response_data=result
-                    )
-                )
+            # Determine partition based on template type, fallback to 'default'
+            partition_name = template.type if template.type in ['email', 'sms', 'push'] else 'default'
+            
+            logger.info(
+                f"🛡️ Sending {template.type} notification to user {user_id} using template '{template_name}' "
+                f"via bulkhead partition '{partition_name}'"
+            )
+            
+            # Create a synchronous function wrapper for the adapter
+            def adapter_send_sync():
+                """Synchronous wrapper for adapter.send() to work with ThreadPoolExecutor"""
+                return adapter.send(adapter_context)
+            
+            # Execute the adapter call through the bulkhead partition
+            try:
+                result = await bulkhead_executor.execute(partition_name, adapter_send_sync)
                 
-                logger.info(f"✅ Successfully sent {template.type} notification {notification_id}")
-                return {
-                    "success": True,
-                    "notification_id": notification_id,
-                    "type": template.type,
-                    "template_name": template_name,
-                    "adapter_result": result
-                }
-            else:
+                # Update the log based on result
+                if result.get('success'):
+                    await self.log_service.update_log(
+                        notification_log.id,
+                        NotificationLogUpdate(
+                            status=NotificationStatus.SENT,
+                            sent_at=datetime.utcnow(),
+                            response_data=result
+                        )
+                    )
+                    
+                    logger.info(f"✅ Successfully sent {template.type} notification {notification_id} via partition '{partition_name}'")
+                    return {
+                        "success": True,
+                        "notification_id": notification_id,
+                        "type": template.type,
+                        "template_name": template_name,
+                        "partition": partition_name,
+                        "adapter_result": result
+                    }
+                else:
+                    await self.log_service.update_log(
+                        notification_log.id,
+                        NotificationLogUpdate(
+                            status=NotificationStatus.FAILED,
+                            error_message=result.get('error', 'Unknown error'),
+                            response_data=result
+                        )
+                    )
+                    
+                    logger.error(f"❌ Failed to send {template.type} notification {notification_id}: {result.get('error')}")
+                    return {
+                        "success": False,
+                        "notification_id": notification_id,
+                        "error": result.get('error'),
+                        "partition": partition_name,
+                        "adapter_result": result
+                    }
+                    
+            except TimeoutError:
+                # Bulkhead timeout - specific handling
+                error_msg = f"Notification timeout in partition '{partition_name}'"
+                logger.error(f"⏰ {error_msg} for notification {notification_id}")
+                
                 await self.log_service.update_log(
                     notification_log.id,
                     NotificationLogUpdate(
                         status=NotificationStatus.FAILED,
-                        error_message=result.get('error', 'Unknown error'),
-                        response_data=result
+                        error_message=error_msg
                     )
                 )
                 
-                logger.error(f"❌ Failed to send {template.type} notification {notification_id}: {result.get('error')}")
                 return {
                     "success": False,
                     "notification_id": notification_id,
-                    "error": result.get('error'),
-                    "adapter_result": result
+                    "error": error_msg,
+                    "error_type": "timeout",
+                    "partition": partition_name
                 }
                 
+            except RuntimeError as e:
+                # Circuit breaker open - specific handling
+                if "Circuit breaker open" in str(e):
+                    error_msg = f"Circuit breaker open for partition '{partition_name}'"
+                    logger.error(f"🚫 {error_msg} for notification {notification_id}")
+                    
+                    await self.log_service.update_log(
+                        notification_log.id,
+                        NotificationLogUpdate(
+                            status=NotificationStatus.FAILED,
+                            error_message=error_msg
+                        )
+                    )
+                    
+                    return {
+                        "success": False,
+                        "notification_id": notification_id,
+                        "error": error_msg,
+                        "error_type": "circuit_breaker_open",
+                        "partition": partition_name
+                    }
+                else:
+                    raise  # Re-raise if it's a different RuntimeError
+                    
         except Exception as e:
             logger.error(f"💥 Unexpected error sending notification {notification_id}: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             
             # Try to update log if it was created
             try:
@@ -399,5 +465,6 @@ class NotificationService:
             return {
                 "success": False,
                 "notification_id": notification_id,
-                "error": str(e)
+                "error": str(e),
+                "error_type": "unexpected_error"
             }

@@ -76,6 +76,12 @@ GET /health
 ```
 Backward-compatible health check endpoint that combines basic liveness and readiness information.
 
+#### BulkheadExecutor Health Check
+```http
+GET /health/bulkhead
+```
+Provides detailed health information about the BulkheadExecutor resilience system, including per-partition metrics and overall status for monitoring notification channel health.
+
 ### Health Response Examples
 
 **Liveness Check Response:**
@@ -352,18 +358,35 @@ Paginated response format:
 
 ## Getting Started
 
-1. Start the service:
-```bash
-# Demo version (recommended for testing)
-python main_demo.py
+### 🐳 Development Environment (Recommended)
 
-# Or production version
-uvicorn main:app --host 0.0.0.0 --port 8003 --reload
+For development, use Docker Compose to start the complete environment with PostgreSQL and Redis:
+
+```bash
+# Start all services (PostgreSQL, Redis, and Notification Service)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f notification-service
+
+# Stop all services
+docker-compose down
+
+# Stop and remove volumes (complete reset)
+docker-compose down -v
+```
+
+**The service will be available at: http://localhost:8003**
+
+#### Production Deployment
+```bash
+# Production version (without reload)
+uvicorn main:app --host 0.0.0.0 --port 8003
 ```
 
 2. Visit the interactive documentation:
 ```
-http://localhost:8003/docs
+http://localhost:8001/docs
 ```
 
 3. Create your first template:
@@ -391,4 +414,101 @@ curl -X POST "http://localhost:8003/api/v1/notifications/send" \
       "order_id": "ORD-12345"
     }
   }'
+```
+
+## 🐳 Docker Compose Details
+
+### Services Included
+
+- **notification-service**: Main application (Port 8003)
+- **postgres**: PostgreSQL 15 database (Port 5432)
+- **redis**: Redis 7 cache (Port 6379)
+
+### Environment Configuration
+
+The Docker Compose setup includes:
+
+- **Database**: Pre-configured PostgreSQL with health checks
+- **Cache**: Redis with persistent storage
+- **BulkheadExecutor**: Container-optimized settings
+- **Development**: Auto-reload enabled, volume mounting
+
+### Useful Docker Compose Commands
+
+```bash
+# Build and start services
+docker-compose up --build
+
+# Start only specific services
+docker-compose up postgres redis
+
+# Run database migrations (if needed)
+docker-compose --profile migration up migrate
+
+# Access development tools container
+docker-compose --profile dev-tools up dev-tools
+docker-compose exec dev-tools bash
+
+# View service status
+docker-compose ps
+
+# View specific service logs
+docker-compose logs postgres
+docker-compose logs redis
+
+# Restart a specific service
+docker-compose restart notification-service
+
+# Scale the notification service
+docker-compose up --scale notification-service=3
+```
+
+### Health Checks
+
+All services include health checks:
+- **PostgreSQL**: `pg_isready` command
+- **Redis**: `redis-cli ping` command  
+- **Notification Service**: HTTP `/health/live` endpoint
+
+### Data Persistence
+
+Docker volumes are used for data persistence:
+- `postgres_data`: Database files
+- `redis_data`: Redis persistence
+
+### Troubleshooting
+
+#### Port Conflicts
+If you have conflicts with default ports:
+```bash
+# Edit docker-compose.yml and change port mappings
+ports:
+  - "5433:5432"  # PostgreSQL on different port
+  - "6380:6379"  # Redis on different port
+  - "8004:8000"  # Notification service on different port
+```
+
+#### Database Connection Issues
+```bash
+# Check if PostgreSQL is running
+docker-compose exec postgres pg_isready -U notification_user
+
+# Connect to database directly
+docker-compose exec postgres psql -U notification_user -d notification_service
+```
+
+#### Service Not Starting
+```bash
+# Check service logs
+docker-compose logs notification-service
+
+# Check health status
+curl http://localhost:8003/health
+```
+
+#### Reset Everything
+```bash
+# Complete reset (removes all data)
+docker-compose down -v
+docker-compose up -d
 ```

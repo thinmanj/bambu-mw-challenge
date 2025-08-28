@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status
 from database.connection import get_redis_client, get_engine
+from core.resilience.bulkhead import get_bulkhead_executor
 import redis
 import sqlalchemy as sa
 from sqlalchemy import text
@@ -25,9 +26,9 @@ async def check_database_connection() -> bool:
     """Check if database connection is healthy"""
     try:
         engine = get_engine()
-        with engine.connect() as conn:
+        async with engine.begin() as conn:
             # Simple query to test connection
-            result = conn.execute(text("SELECT 1"))
+            result = await conn.execute(text("SELECT 1"))
             return result.fetchone() is not None
     except Exception:
         return False
@@ -174,3 +175,49 @@ async def health_check():
         )
     
     return response
+
+
+@health_router.get("/bulkhead")
+async def bulkhead_health_check():
+    """
+    BulkheadExecutor health check endpoint.
+    
+    Provides detailed information about the health and metrics
+    of all bulkhead partitions used for notification resilience.
+    """
+    try:
+        bulkhead_executor = get_bulkhead_executor()
+        health_info = bulkhead_executor.get_health()
+        
+        # Determine overall HTTP status based on bulkhead health
+        overall_status = health_info["status"]
+        
+        response = {
+            "status": overall_status,
+            "service": "notification-service-bulkhead",
+            "timestamp": datetime.utcnow().isoformat(),
+            **health_info
+        }
+        
+        # Return 503 if any partition is in failed state
+        if overall_status == "failed":
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=response
+            )
+        
+        return response
+        
+    except Exception as e:
+        error_response = {
+            "status": "error",
+            "service": "notification-service-bulkhead",
+            "timestamp": datetime.utcnow().isoformat(),
+            "error": str(e),
+            "message": "Failed to get bulkhead health information"
+        }
+        
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=error_response
+        )
