@@ -51,7 +51,7 @@ async def send_notification(
         
         response = SendNotificationResponse(
             success=result["success"],
-            notification_id=result["notification_id"],
+            notification_id=result.get("notification_id"),
             error=result.get("error"),
             type=result.get("type"),
             template_name=result.get("template_name"),
@@ -60,11 +60,11 @@ async def send_notification(
         )
         
         if result["success"]:
-            logger.info(f"✅ Notification sent successfully - id: {result['notification_id']}, user_id: {request.user_id}")
+            logger.info(f"✅ Notification sent successfully - id: {result.get('notification_id')}, user_id: {request.user_id}")
         elif result.get("skipped"):
-            logger.info(f"⏭️ Notification skipped - id: {result['notification_id']}, user_id: {request.user_id}")
+            logger.info(f"⏭️ Notification skipped - id: {result.get('notification_id')}, user_id: {request.user_id}")
         else:
-            logger.error(f"❌ Notification failed - id: {result['notification_id']}, user_id: {request.user_id}, error: {result.get('error')}")
+            logger.error(f"❌ Notification failed - id: {result.get('notification_id')}, user_id: {request.user_id}, error: {result.get('error')}")
         
         return response
         

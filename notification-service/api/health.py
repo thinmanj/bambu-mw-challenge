@@ -72,15 +72,25 @@ async def readiness_check():
     healthy = True
     
     # Check database connectivity
-    db_healthy = await check_database_connection()
-    checks["database"] = "healthy" if db_healthy else "unhealthy"
-    if not db_healthy:
+    try:
+        db_healthy = await check_database_connection()
+        checks["database"] = "healthy" if db_healthy else "unhealthy"
+        if not db_healthy:
+            healthy = False
+    except Exception as e:
+        checks["database"] = "unhealthy"
+        checks["database_error"] = str(e)
         healthy = False
     
     # Check Redis connectivity
-    redis_healthy = await check_redis_connection()
-    checks["redis"] = "healthy" if redis_healthy else "unhealthy"
-    if not redis_healthy:
+    try:
+        redis_healthy = await check_redis_connection()
+        checks["redis"] = "healthy" if redis_healthy else "unhealthy"
+        if not redis_healthy:
+            healthy = False
+    except Exception as e:
+        checks["redis"] = "unhealthy"
+        checks["redis_error"] = str(e)
         healthy = False
     
     response = {

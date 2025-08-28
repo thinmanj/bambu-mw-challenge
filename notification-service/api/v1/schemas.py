@@ -1,7 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, Dict, Any, List
 from datetime import datetime, time
-from core.models import NotificationType, NotificationStatus
+from api.v1.enums import NotificationType, NotificationStatus
 
 
 # Base schemas with common configuration
