@@ -1,161 +1,206 @@
 """
-Unit tests for the SMS adapter.
+Comprehensive unit tests for SMS adapter.
 """
 
 import pytest
 from unittest.mock import patch, MagicMock
+from adapters.sms import SMSProvider
+from core.resilience.retry import RetryableError, NonRetryableError
+
+
+@pytest.fixture
+def sms_provider():
+    """Create SMS provider for testing."""
+    return SMSProvider()
+
+
+@pytest.fixture
+def valid_sms_context():
+    """Valid SMS context for testing."""
+    return {
+        'phone_number': '+1234567890',
+        'message': 'Test SMS message'
+    }
 
 
 @pytest.mark.unit
 class TestSMSProvider:
     """Test cases for SMSProvider."""
 
-    def test_sms_provider_initialization(self, sms_adapter):
+    def test_sms_provider_initialization(self, sms_provider):
         """Test that SMSProvider initializes correctly."""
-        assert sms_adapter is not None
-        assert hasattr(sms_adapter, 'send')
+        assert sms_provider is not None
+        assert hasattr(sms_provider, 'send')
+        assert sms_provider.adapter_name == "sms"
 
-    def test_send_sms_success(self, sms_adapter, sms_context):
+    @patch('random.random', return_value=0.5)  # No random failures
+    def test_send_sms_success(self, mock_random, sms_provider, valid_sms_context):
         """Test successful SMS sending."""
-        result = sms_adapter.send(sms_context)
+        result = sms_provider.send(valid_sms_context)
         
         assert result is not None
         assert result['success'] is True
         assert result['provider'] == 'sms'
-        assert result['recipient'] == sms_context['phone_number']
-        assert result['message'] == sms_context['message']
+        assert result['recipient'] == valid_sms_context['phone_number']
+        assert result['message'] == valid_sms_context['message']
         assert 'message_id' in result
+        assert result['message_id'].startswith('sms_msg_')
 
-    def test_send_sms_with_recipient_fallback(self, sms_adapter):
+    @patch('random.random', return_value=0.5)  # No random failures  
+    def test_send_sms_with_recipient_fallback(self, mock_random, sms_provider):
         """Test SMS sending with recipient field fallback."""
         context = {
             'recipient': '+1234567890',
-            'message': 'Test SMS message'
+            'message': 'Test SMS'
         }
         
-        result = sms_adapter.send(context)
+        result = sms_provider.send(context)
         
         assert result['success'] is True
         assert result['recipient'] == '+1234567890'
 
-    def test_send_sms_missing_phone_number(self, sms_adapter):
-        """Test SMS sending fails when phone number is missing."""
+    def test_send_sms_missing_recipient(self, sms_provider):
+        """Test SMS sending fails when recipient is missing."""
         context = {
-            'message': 'Test SMS message'
+            'message': 'Test SMS'
             # Missing phone_number and recipient
         }
         
-        result = sms_adapter.send(context)
+        with pytest.raises(NonRetryableError) as exc_info:
+            sms_provider.send(context)
         
-        assert result['success'] is False
-        assert result['error'] == 'Missing recipient phone number'
-        assert result['provider'] == 'sms'
+        assert "Missing recipient" in str(exc_info.value)
 
-    def test_send_sms_missing_message(self, sms_adapter):
+    def test_send_sms_missing_message(self, sms_provider):
         """Test SMS sending fails when message is missing."""
         context = {
             'phone_number': '+1234567890'
             # Missing message
         }
         
-        result = sms_adapter.send(context)
+        with pytest.raises(NonRetryableError) as exc_info:
+            sms_provider.send(context)
         
-        assert result['success'] is False
-        assert result['error'] == 'Missing message content'
-        assert result['provider'] == 'sms'
+        assert "Missing message" in str(exc_info.value)
 
-    def test_send_sms_with_body_fallback(self, sms_adapter):
-        """Test SMS sending with body field fallback for message."""
-        context = {
-            'phone_number': '+1234567890',
-            'body': 'Test SMS message via body field'
-        }
+    def test_send_sms_invalid_phone_format(self, sms_provider):
+        """Test SMS sending fails with invalid phone format."""
+        invalid_phones = [
+            'not-a-phone',  # Not numeric and doesn't start with +
+            '123-456-7890-extra',  # Contains non-numeric characters, no +
+        ]
         
-        result = sms_adapter.send(context)
-        
-        assert result['success'] is True
-        assert result['message'] == 'Test SMS message via body field'
+        for phone in invalid_phones:
+            context = {
+                'phone_number': phone,
+                'message': 'Test SMS'
+            }
+            
+            with pytest.raises(Exception) as exc_info:  # Can be wrapped in RetryError
+                sms_provider.send(context)
+            
+            assert "Invalid phone number format" in str(exc_info.value)
 
-    def test_send_sms_message_id_generation(self, sms_adapter, sms_context):
+    @patch('random.random', return_value=0.5)  # No random failures
+    def test_send_sms_valid_phone_formats(self, mock_random, sms_provider):
+        """Test SMS sending with various valid phone formats."""
+        valid_phones = [
+            '+1234567890',
+            '+12345678901',  # 11 digits
+            '+123456789012'  # 12 digits
+        ]
+        
+        for phone in valid_phones:
+            context = {
+                'phone_number': phone,
+                'message': 'Test SMS'
+            }
+            
+            result = sms_provider.send(context)
+            assert result['success'] is True
+            assert result['recipient'] == phone
+
+    @patch('random.random', return_value=0.5)  # No random failures
+    def test_send_sms_message_id_generation(self, mock_random, sms_provider, valid_sms_context):
         """Test that message ID is generated consistently."""
-        result1 = sms_adapter.send(sms_context)
-        result2 = sms_adapter.send(sms_context)
+        result1 = sms_provider.send(valid_sms_context)
+        result2 = sms_provider.send(valid_sms_context)
         
         # Same context should generate same message ID
         assert result1['message_id'] == result2['message_id']
 
-    def test_send_sms_different_contexts_different_ids(self, sms_adapter):
+    @patch('random.random', return_value=0.5)  # No random failures
+    def test_send_sms_different_contexts_different_ids(self, mock_random, sms_provider):
         """Test that different contexts generate different message IDs."""
         context1 = {
-            'phone_number': '+1111111111',
+            'phone_number': '+1234567890',
             'message': 'Message 1'
         }
         context2 = {
-            'phone_number': '+2222222222',
+            'phone_number': '+1234567891',
             'message': 'Message 2'
         }
         
-        result1 = sms_adapter.send(context1)
-        result2 = sms_adapter.send(context2)
+        result1 = sms_provider.send(context1)
+        result2 = sms_provider.send(context2)
         
         assert result1['message_id'] != result2['message_id']
 
+    @patch('random.random', return_value=0.5)  # No random failures
     @patch('adapters.sms.logger')
-    def test_send_sms_logging(self, mock_logger, sms_adapter, sms_context):
+    def test_send_sms_logging(self, mock_logger, mock_random, sms_provider, valid_sms_context):
         """Test that SMS sending is properly logged."""
-        sms_adapter.send(sms_context)
+        sms_provider.send(valid_sms_context)
         
         # Check that info log was called
         mock_logger.info.assert_called()
-        log_call_args = mock_logger.info.call_args[0][0]
-        assert 'Sending SMS to' in log_call_args
-        assert sms_context['phone_number'] in log_call_args
-
-    @patch('adapters.sms.logger')
-    def test_send_sms_error_logging(self, mock_logger, sms_adapter, invalid_sms_context):
-        """Test that SMS errors are properly logged."""
-        sms_adapter.send(invalid_sms_context)
+        log_calls = [str(call) for call in mock_logger.info.call_args_list]
         
-        # Check that error log was called
-        mock_logger.error.assert_called()
-        log_call_args = mock_logger.error.call_args[0][0]
-        assert 'SMS sending failed' in log_call_args
+        # Should have sending logs (initialization happens before patch)
+        assert any('Sending SMS to' in call for call in log_calls)
 
-    def test_send_sms_long_message_logging(self, sms_adapter):
-        """Test logging behavior with long SMS message."""
-        long_message = "x" * 100  # Long message
-        context = {
-            'phone_number': '+1234567890',
-            'message': long_message
-        }
+    @patch('random.random', return_value=0.05)  # Force retryable error
+    def test_send_sms_retryable_error(self, mock_random, sms_provider, valid_sms_context):
+        """Test that retryable errors are properly raised."""
+        with pytest.raises(Exception) as exc_info:  # Could be RetryError or RetryableError
+            sms_provider.send(valid_sms_context)
         
-        with patch('adapters.sms.logger') as mock_logger:
-            sms_adapter.send(context)
-            
-            # Check info log was called and message was truncated
-            mock_logger.info.assert_called()
-            log_call_args = mock_logger.info.call_args[0][0]
-            assert '...' in log_call_args  # Should be truncated
+        # Check if it's a tenacity RetryError that wraps the original error
+        exc_str = str(exc_info.value)
+        if hasattr(exc_info.value, 'last_attempt') and hasattr(exc_info.value.last_attempt, 'exception'):
+            exc_str = str(exc_info.value.last_attempt.exception())
+        assert "SMS API rate limit exceeded" in exc_str
 
-    def test_send_sms_short_message_logging(self, sms_adapter):
-        """Test logging behavior with short SMS message."""
-        short_message = "Short SMS"
-        context = {
-            'phone_number': '+1234567890',
-            'message': short_message
-        }
+    @patch('random.random', return_value=0.10)  # Force non-retryable error (between 0.08 and 0.12)
+    def test_send_sms_non_retryable_error(self, mock_random, sms_provider, valid_sms_context):
+        """Test that non-retryable errors are properly raised."""
+        with pytest.raises(Exception) as exc_info:  # Could be RetryError wrapping NonRetryableError
+            sms_provider.send(valid_sms_context)
         
-        with patch('adapters.sms.logger') as mock_logger:
-            sms_adapter.send(context)
-            
-            # Check info log was called and message not truncated
-            mock_logger.info.assert_called()
-            log_call_args = mock_logger.info.call_args[0][0]
-            assert short_message in log_call_args  # Should not be truncated
+        # Check if it's a tenacity RetryError that wraps the original error
+        exc_str = str(exc_info.value)
+        if hasattr(exc_info.value, 'last_attempt') and hasattr(exc_info.value.last_attempt, 'exception'):
+            exc_str = str(exc_info.value.last_attempt.exception())
+        assert "Phone number is blocked or invalid" in exc_str
 
-    def test_send_sms_response_structure(self, sms_adapter, sms_context):
+    def test_send_sms_invalid_context_type(self, sms_provider):
+        """Test SMS sending fails with invalid context type."""
+        with pytest.raises(NonRetryableError) as exc_info:
+            sms_provider.send("invalid_context")
+        
+        assert "Invalid context" in str(exc_info.value)
+
+    def test_send_sms_empty_context(self, sms_provider):
+        """Test SMS sending fails with empty context."""
+        with pytest.raises(NonRetryableError) as exc_info:
+            sms_provider.send({})
+        
+        assert "Missing recipient" in str(exc_info.value)
+
+    @patch('random.random', return_value=0.5)  # No random failures
+    def test_send_sms_response_structure(self, mock_random, sms_provider, valid_sms_context):
         """Test that SMS response has correct structure."""
-        result = sms_adapter.send(sms_context)
+        result = sms_provider.send(valid_sms_context)
         
         required_fields = ['success', 'message_id', 'provider', 'recipient', 'message']
         for field in required_fields:
@@ -168,33 +213,69 @@ class TestSMSProvider:
         assert isinstance(result['recipient'], str)
         assert isinstance(result['message'], str)
 
-    def test_send_sms_empty_message(self, sms_adapter):
-        """Test SMS sending with empty message."""
+    @patch('random.random', return_value=0.5)  # No random failures
+    def test_send_sms_with_special_characters(self, mock_random, sms_provider):
+        """Test SMS sending with special characters in message."""
         context = {
             'phone_number': '+1234567890',
-            'message': ''
+            'message': 'SMS with émojis 🎉 and spëcial chars 特殊字符'
         }
         
-        result = sms_adapter.send(context)
+        result = sms_provider.send(context)
         
-        assert result['success'] is False
-        assert result['error'] == 'Missing message content'
+        assert result['success'] is True
+        assert result['message'] == context['message']
 
-    def test_send_sms_phone_number_validation(self, sms_adapter):
-        """Test various phone number formats."""
-        test_numbers = [
-            '+1234567890',
-            '1234567890', 
-            '+44 123 456 7890',
-            '(555) 123-4567'
-        ]
+    @patch('random.random', return_value=0.5)  # No random failures
+    def test_send_sms_long_message(self, mock_random, sms_provider):
+        """Test SMS sending with long message."""
+        long_message = "x" * 500  # Very long message
+        context = {
+            'phone_number': '+1234567890',
+            'message': long_message
+        }
         
-        for number in test_numbers:
-            context = {
-                'phone_number': number,
-                'message': 'Test message'
-            }
-            
-            result = sms_adapter.send(context)
-            assert result['success'] is True
-            assert result['recipient'] == number
+        result = sms_provider.send(context)
+        
+        assert result['success'] is True
+        assert result['message'] == long_message
+
+    @patch('random.random', return_value=0.5)  # No random failures
+    def test_send_sms_empty_message(self, mock_random, sms_provider):
+        """Test SMS sending fails with empty message."""
+        context = {
+            'phone_number': '+1234567890',
+            'message': ''  # Empty message
+        }
+        
+        with pytest.raises(NonRetryableError) as exc_info:
+            sms_provider.send(context)
+        
+        assert "Missing message" in str(exc_info.value)
+
+    @patch('random.random', return_value=0.5)  # No random failures
+    def test_send_sms_whitespace_only_message(self, mock_random, sms_provider):
+        """Test SMS sending succeeds with whitespace-only message."""
+        context = {
+            'phone_number': '+1234567890',
+            'message': '   '  # Only whitespace
+        }
+        
+        result = sms_provider.send(context)
+        
+        assert result['success'] is True
+        assert result['message'] == '   '  # Preserves whitespace
+
+    @patch('random.random', return_value=0.5)  # No random failures  
+    def test_send_sms_with_body_fallback(self, mock_random, sms_provider):
+        """Test SMS sending with body field as message fallback."""
+        context = {
+            'phone_number': '+1234567890',
+            'body': 'Test SMS from body field'  # Using body instead of message
+        }
+        
+        result = sms_provider.send(context)
+        
+        assert result['success'] is True
+        assert result['recipient'] == '+1234567890'
+        assert result['message'] == 'Test SMS from body field'

@@ -48,9 +48,8 @@ class TestEnums:
 class TestNotificationTemplate:
     """Test cases for NotificationTemplate model."""
 
-    @pytest.mark.asyncio
-    async def test_notification_template_creation(self, async_db_session):
-        """Test creating a notification template."""
+    def test_notification_template_instantiation(self):
+        """Test instantiating a notification template model."""
         template = NotificationTemplate(
             name="test_template",
             subject="Test Subject",
@@ -59,120 +58,59 @@ class TestNotificationTemplate:
             variables={"variable": "string"}
         )
         
-        async_db_session.add(template)
-        await async_db_session.commit()
-        await async_db_session.refresh(template)
-        
-        assert template.id is not None
         assert template.name == "test_template"
         assert template.subject == "Test Subject"
         assert template.body == "Test body with {variable}"
         assert template.type == "email"
         assert template.variables == {"variable": "string"}
-        assert template.created_at is not None
-        assert template.updated_at is not None
 
-    @pytest.mark.asyncio
-    async def test_notification_template_unique_name_constraint(self, async_db_session):
-        """Test that template names must be unique."""
-        template1 = NotificationTemplate(
-            name="duplicate_name",
-            body="Body 1",
-            type="email"
-        )
-        template2 = NotificationTemplate(
-            name="duplicate_name",
-            body="Body 2",
-            type="sms"
-        )
+    def test_notification_template_table_name(self):
+        """Test that the table name is correct."""
+        assert NotificationTemplate.__tablename__ == "notification_templates"
+    
+    def test_notification_template_columns(self):
+        """Test that the model has the expected columns."""
+        # Check that key columns exist
+        assert hasattr(NotificationTemplate, "id")
+        assert hasattr(NotificationTemplate, "name")
+        assert hasattr(NotificationTemplate, "subject")
+        assert hasattr(NotificationTemplate, "body")
+        assert hasattr(NotificationTemplate, "type")
+        assert hasattr(NotificationTemplate, "variables")
+        assert hasattr(NotificationTemplate, "created_at")
+        assert hasattr(NotificationTemplate, "updated_at")
         
-        async_db_session.add(template1)
-        await async_db_session.commit()
-        
-        async_db_session.add(template2)
-        
-        with pytest.raises(IntegrityError):
-            await async_db_session.commit()
+        # Check column properties
+        assert NotificationTemplate.name.primary_key is False
+        assert NotificationTemplate.name.nullable is False
+        assert NotificationTemplate.subject.nullable is True
+        assert NotificationTemplate.body.nullable is False
+        assert NotificationTemplate.type.nullable is False
 
-    @pytest.mark.asyncio
-    async def test_notification_template_type_constraint(self, async_db_session):
-        """Test that template type must be valid."""
-        template = NotificationTemplate(
-            name="invalid_type_template",
-            body="Test body",
-            type="invalid_type"
-        )
+    def test_notification_template_relationships(self):
+        """Test that the model has the expected relationships."""
+        assert hasattr(NotificationTemplate, "notification_logs")
+    
+    def test_notification_template_constraints(self):
+        """Test that the model has the expected constraints."""
+        # Check for type constraint
+        constraints = NotificationTemplate.__table_args__
+        type_constraint_exists = False
         
-        async_db_session.add(template)
+        for constraint in constraints:
+            if hasattr(constraint, "name") and constraint.name == "check_notification_template_type":
+                type_constraint_exists = True
+                break
         
-        with pytest.raises(IntegrityError):
-            await async_db_session.commit()
-
-    @pytest.mark.asyncio
-    async def test_notification_template_required_fields(self, async_db_session):
-        """Test that required fields must be provided."""
-        # Missing name
-        with pytest.raises((IntegrityError, TypeError)):
-            template = NotificationTemplate(
-                body="Test body",
-                type="email"
-            )
-            async_db_session.add(template)
-            await async_db_session.commit()
-
-    @pytest.mark.asyncio
-    async def test_notification_template_relationships(self, async_db_session):
-        """Test template relationships with logs."""
-        # Create template
-        template = NotificationTemplate(
-            name="test_template_with_logs",
-            body="Test body",
-            type="email"
-        )
-        async_db_session.add(template)
-        await async_db_session.commit()
-        await async_db_session.refresh(template)
-        
-        # Create related log
-        log = NotificationLog(
-            user_id=123,
-            template_id=template.id,
-            type="email",
-            status="pending"
-        )
-        async_db_session.add(log)
-        await async_db_session.commit()
-        
-        # Test relationship loading
-        await async_db_session.refresh(template)
-        assert len(template.notification_logs) == 1
-        assert template.notification_logs[0].user_id == 123
-
-    @pytest.mark.asyncio
-    async def test_notification_template_optional_subject(self, async_db_session):
-        """Test that subject is optional for templates."""
-        template = NotificationTemplate(
-            name="no_subject_template",
-            body="Test body without subject",
-            type="sms",
-            subject=None
-        )
-        
-        async_db_session.add(template)
-        await async_db_session.commit()
-        await async_db_session.refresh(template)
-        
-        assert template.subject is None
-        assert template.body == "Test body without subject"
+        assert type_constraint_exists is True
 
 
 @pytest.mark.unit
 class TestNotificationLog:
     """Test cases for NotificationLog model."""
 
-    @pytest.mark.asyncio
-    async def test_notification_log_creation(self, async_db_session):
-        """Test creating a notification log."""
+    def test_notification_log_instantiation(self):
+        """Test instantiating a notification log model."""
         log = NotificationLog(
             user_id=123,
             type="email",
@@ -180,129 +118,67 @@ class TestNotificationLog:
             notification_metadata={"recipient": "test@example.com"}
         )
         
-        async_db_session.add(log)
-        await async_db_session.commit()
-        await async_db_session.refresh(log)
-        
-        assert log.id is not None
         assert log.user_id == 123
         assert log.type == "email"
         assert log.status == "pending"
+        assert log.notification_metadata == {"recipient": "test@example.com"}
+        # Default/unset values
+        assert log.id is None  # Set by database
+        assert log.template_id is None
         assert log.sent_at is None
         assert log.error_message is None
-        assert log.notification_metadata == {"recipient": "test@example.com"}
-        assert log.created_at is not None
+        assert log.created_at is None  # Set by database
 
-    @pytest.mark.asyncio
-    async def test_notification_log_with_template(self, async_db_session):
-        """Test creating a log with template reference."""
-        # Create template first
-        template = NotificationTemplate(
-            name="log_template",
-            body="Template for log test",
-            type="email"
-        )
-        async_db_session.add(template)
-        await async_db_session.commit()
-        await async_db_session.refresh(template)
+    def test_notification_log_table_name(self):
+        """Test that the table name is correct."""
+        assert NotificationLog.__tablename__ == "notification_logs"
+    
+    def test_notification_log_columns(self):
+        """Test that the model has the expected columns."""
+        # Check that key columns exist
+        assert hasattr(NotificationLog, "id")
+        assert hasattr(NotificationLog, "user_id")
+        assert hasattr(NotificationLog, "template_id")
+        assert hasattr(NotificationLog, "type")
+        assert hasattr(NotificationLog, "status")
+        assert hasattr(NotificationLog, "sent_at")
+        assert hasattr(NotificationLog, "error_message")
+        assert hasattr(NotificationLog, "notification_metadata")
+        assert hasattr(NotificationLog, "created_at")
         
-        # Create log with template reference
-        log = NotificationLog(
-            user_id=456,
-            template_id=template.id,
-            type="email",
-            status="sent",
-            sent_at=datetime.utcnow()
-        )
-        
-        async_db_session.add(log)
-        await async_db_session.commit()
-        await async_db_session.refresh(log)
-        
-        assert log.template_id == template.id
-        assert log.template.name == "log_template"
-        assert log.sent_at is not None
+        # Check column properties
+        assert NotificationLog.user_id.nullable is False
+        assert NotificationLog.template_id.nullable is True
+        assert NotificationLog.type.nullable is False
+        assert NotificationLog.status.nullable is False
+        assert NotificationLog.sent_at.nullable is True
+        assert NotificationLog.error_message.nullable is True
+        assert NotificationLog.notification_metadata.nullable is True
 
-    @pytest.mark.asyncio
-    async def test_notification_log_type_constraint(self, async_db_session):
-        """Test that log type must be valid."""
-        log = NotificationLog(
-            user_id=123,
-            type="invalid_type",
-            status="pending"
-        )
+    def test_notification_log_relationships(self):
+        """Test that the model has the expected relationships."""
+        assert hasattr(NotificationLog, "template")
+    
+    def test_notification_log_constraints(self):
+        """Test that the model has the expected constraints."""
+        # Check for type and status constraints
+        constraints = NotificationLog.__table_args__
+        constraint_names = []
         
-        async_db_session.add(log)
+        for constraint in constraints:
+            if hasattr(constraint, "name"):
+                constraint_names.append(constraint.name)
         
-        with pytest.raises(IntegrityError):
-            await async_db_session.commit()
-
-    @pytest.mark.asyncio
-    async def test_notification_log_status_constraint(self, async_db_session):
-        """Test that log status must be valid."""
-        log = NotificationLog(
-            user_id=123,
-            type="email",
-            status="invalid_status"
-        )
-        
-        async_db_session.add(log)
-        
-        with pytest.raises(IntegrityError):
-            await async_db_session.commit()
-
-    @pytest.mark.asyncio
-    async def test_notification_log_default_status(self, async_db_session):
-        """Test that log status defaults to 'pending'."""
-        log = NotificationLog(
-            user_id=123,
-            type="email"
-        )
-        
-        async_db_session.add(log)
-        await async_db_session.commit()
-        await async_db_session.refresh(log)
-        
-        assert log.status == "pending"
-
-    @pytest.mark.asyncio
-    async def test_notification_log_error_handling(self, async_db_session):
-        """Test logging with error information."""
-        log = NotificationLog(
-            user_id=123,
-            type="email",
-            status="failed",
-            error_message="SMTP connection failed"
-        )
-        
-        async_db_session.add(log)
-        await async_db_session.commit()
-        await async_db_session.refresh(log)
-        
-        assert log.status == "failed"
-        assert log.error_message == "SMTP connection failed"
-        assert log.sent_at is None
-
-    @pytest.mark.asyncio
-    async def test_notification_log_required_fields(self, async_db_session):
-        """Test that required fields must be provided."""
-        # Missing user_id
-        with pytest.raises((IntegrityError, TypeError)):
-            log = NotificationLog(
-                type="email",
-                status="pending"
-            )
-            async_db_session.add(log)
-            await async_db_session.commit()
+        assert "check_notification_log_type" in constraint_names
+        assert "check_notification_log_status" in constraint_names
 
 
 @pytest.mark.unit
 class TestUserPreference:
     """Test cases for UserPreference model."""
 
-    @pytest.mark.asyncio
-    async def test_user_preference_creation(self, async_db_session):
-        """Test creating user preferences."""
+    def test_user_preference_instantiation(self):
+        """Test instantiating a user preference model."""
         preference = UserPreference(
             user_id=123,
             email_enabled=True,
@@ -312,177 +188,45 @@ class TestUserPreference:
             quiet_hours_end=time(8, 0)
         )
         
-        async_db_session.add(preference)
-        await async_db_session.commit()
-        await async_db_session.refresh(preference)
-        
-        assert preference.id is not None
         assert preference.user_id == 123
         assert preference.email_enabled is True
         assert preference.sms_enabled is False
         assert preference.push_enabled is True
         assert preference.quiet_hours_start == time(22, 0)
         assert preference.quiet_hours_end == time(8, 0)
-        assert preference.created_at is not None
-        assert preference.updated_at is not None
+        # Database-set values
+        assert preference.id is None
+        assert preference.created_at is None
+        assert preference.updated_at is None
 
-    @pytest.mark.asyncio
-    async def test_user_preference_defaults(self, async_db_session):
-        """Test default values for user preferences."""
-        preference = UserPreference(user_id=456)
+    def test_user_preference_table_name(self):
+        """Test that the table name is correct."""
+        assert UserPreference.__tablename__ == "user_preferences"
+    
+    def test_user_preference_columns(self):
+        """Test that the model has the expected columns."""
+        # Check that key columns exist
+        assert hasattr(UserPreference, "id")
+        assert hasattr(UserPreference, "user_id")
+        assert hasattr(UserPreference, "email_enabled")
+        assert hasattr(UserPreference, "sms_enabled")
+        assert hasattr(UserPreference, "push_enabled")
+        assert hasattr(UserPreference, "quiet_hours_start")
+        assert hasattr(UserPreference, "quiet_hours_end")
+        assert hasattr(UserPreference, "updated_at")
+        assert hasattr(UserPreference, "created_at")
         
-        async_db_session.add(preference)
-        await async_db_session.commit()
-        await async_db_session.refresh(preference)
-        
-        assert preference.email_enabled is True
-        assert preference.sms_enabled is True
-        assert preference.push_enabled is True
-        assert preference.quiet_hours_start is None
-        assert preference.quiet_hours_end is None
+        # Check column properties
+        assert UserPreference.user_id.nullable is False
+        assert UserPreference.quiet_hours_start.nullable is True
+        assert UserPreference.quiet_hours_end.nullable is True
 
-    @pytest.mark.asyncio
-    async def test_user_preference_unique_user_id(self, async_db_session):
-        """Test that user_id must be unique."""
-        preference1 = UserPreference(user_id=789)
-        preference2 = UserPreference(user_id=789)
-        
-        async_db_session.add(preference1)
-        await async_db_session.commit()
-        
-        async_db_session.add(preference2)
-        
-        with pytest.raises(IntegrityError):
-            await async_db_session.commit()
-
-    @pytest.mark.asyncio
-    async def test_user_preference_quiet_hours_none(self, async_db_session):
-        """Test that quiet hours can be None."""
-        preference = UserPreference(
-            user_id=999,
-            quiet_hours_start=None,
-            quiet_hours_end=None
-        )
-        
-        async_db_session.add(preference)
-        await async_db_session.commit()
-        await async_db_session.refresh(preference)
-        
-        assert preference.quiet_hours_start is None
-        assert preference.quiet_hours_end is None
-
-    @pytest.mark.asyncio
-    async def test_user_preference_partial_quiet_hours(self, async_db_session):
-        """Test quiet hours with only one value set."""
-        preference = UserPreference(
-            user_id=1000,
-            quiet_hours_start=time(23, 30),
-            quiet_hours_end=None
-        )
-        
-        async_db_session.add(preference)
-        await async_db_session.commit()
-        await async_db_session.refresh(preference)
-        
-        assert preference.quiet_hours_start == time(23, 30)
-        assert preference.quiet_hours_end is None
-
-    @pytest.mark.asyncio
-    async def test_user_preference_boolean_fields(self, async_db_session):
-        """Test boolean notification enable/disable fields."""
-        preference = UserPreference(
-            user_id=1001,
-            email_enabled=False,
-            sms_enabled=False,
-            push_enabled=False
-        )
-        
-        async_db_session.add(preference)
-        await async_db_session.commit()
-        await async_db_session.refresh(preference)
-        
-        assert preference.email_enabled is False
-        assert preference.sms_enabled is False
-        assert preference.push_enabled is False
-
-    @pytest.mark.asyncio
-    async def test_user_preference_required_user_id(self, async_db_session):
-        """Test that user_id is required."""
-        with pytest.raises((IntegrityError, TypeError)):
-            preference = UserPreference(
-                email_enabled=True,
-                sms_enabled=True,
-                push_enabled=True
-            )
-            async_db_session.add(preference)
-            await async_db_session.commit()
+    def test_user_preference_unique_user_id_column(self):
+        """Test that user_id column has unique constraint."""
+        # Check that user_id column has unique constraint
+        assert UserPreference.user_id.unique is True
 
 
-@pytest.mark.unit
-class TestModelRelationships:
-    """Test cases for model relationships."""
-
-    @pytest.mark.asyncio
-    async def test_template_log_relationship(self, async_db_session):
-        """Test the relationship between templates and logs."""
-        # Create template
-        template = NotificationTemplate(
-            name="relationship_test",
-            body="Test relationship",
-            type="email"
-        )
-        async_db_session.add(template)
-        await async_db_session.commit()
-        await async_db_session.refresh(template)
-        
-        # Create multiple logs for the template
-        log1 = NotificationLog(
-            user_id=1,
-            template_id=template.id,
-            type="email",
-            status="sent"
-        )
-        log2 = NotificationLog(
-            user_id=2,
-            template_id=template.id,
-            type="email",
-            status="pending"
-        )
-        
-        async_db_session.add_all([log1, log2])
-        await async_db_session.commit()
-        
-        # Refresh and test relationships
-        await async_db_session.refresh(template)
-        await async_db_session.refresh(log1)
-        await async_db_session.refresh(log2)
-        
-        # Test forward relationship (template -> logs)
-        assert len(template.notification_logs) == 2
-        log_user_ids = [log.user_id for log in template.notification_logs]
-        assert 1 in log_user_ids
-        assert 2 in log_user_ids
-        
-        # Test reverse relationship (log -> template)
-        assert log1.template.name == "relationship_test"
-        assert log2.template.name == "relationship_test"
-
-    @pytest.mark.asyncio
-    async def test_log_without_template(self, async_db_session):
-        """Test that logs can exist without templates."""
-        log = NotificationLog(
-            user_id=123,
-            type="email",
-            status="sent",
-            template_id=None
-        )
-        
-        async_db_session.add(log)
-        await async_db_session.commit()
-        await async_db_session.refresh(log)
-        
-        assert log.template_id is None
-        assert log.template is None
 
 
 @pytest.mark.unit

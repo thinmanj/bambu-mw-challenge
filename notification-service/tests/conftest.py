@@ -37,6 +37,12 @@ def mock_db_session():
     session.refresh = AsyncMock()
     return session
 
+# Alias for repository tests that expect async_db_session
+@pytest.fixture
+def async_db_session(mock_db_session):
+    """Alias for mock_db_session to support repository tests."""
+    return mock_db_session
+
 # Template fixtures
 @pytest.fixture
 def sample_template_data():

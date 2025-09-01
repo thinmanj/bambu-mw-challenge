@@ -19,14 +19,15 @@ class PushProvider(BaseNotificationAdapter):
         message = context.get('message') or context.get('body', '')
         
         # Push-specific validation
-        if device_token and len(device_token) < 10:
+        if not device_token or (isinstance(device_token, str) and len(device_token.strip()) < 10):
             raise NonRetryableError("Device token too short")
         
         # Simulate potential failures for testing
         import random
-        if random.random() < 0.09:  # 9% chance of retryable error
+        rand_val = random.random()
+        if rand_val < 0.09:  # 9% chance of retryable error
             raise RetryableError("FCM server temporarily unavailable")
-        elif random.random() < 0.04:  # 4% chance of non-retryable error
+        elif rand_val < 0.13:  # Next 4% chance of non-retryable error (0.09 to 0.13)
             raise NonRetryableError("Device token is invalid or unregistered")
         
         # Simulate successful sending
@@ -38,5 +39,5 @@ class PushProvider(BaseNotificationAdapter):
             "provider": "push",
             "recipient": device_token,
             "title": title,
-            "message": message
+            "body": message
         }

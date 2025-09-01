@@ -7,11 +7,13 @@ from math import ceil
 from core.models import (
     NotificationTemplate, NotificationLog, UserPreference, NotificationStatus
 )
-from api.v1.schemas import (
-    NotificationRequest, NotificationResponse,
+from core.schemas import (
     NotificationTemplateCreate, NotificationTemplateUpdate,
     NotificationLogCreate, NotificationLogUpdate,
-    UserPreferenceCreate, UserPreferenceUpdate,
+    UserPreferenceCreate, UserPreferenceUpdate
+)
+from api.v1.schemas import (
+    NotificationRequest, NotificationResponse,
     NotificationTemplateList, NotificationLogList, UserPreferenceList
 )
 from core.repositories import (

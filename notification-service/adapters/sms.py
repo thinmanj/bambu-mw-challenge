@@ -23,9 +23,10 @@ class SMSProvider(BaseNotificationAdapter):
         
         # Simulate potential failures for testing
         import random
-        if random.random() < 0.08:  # 8% chance of retryable error
+        rand_val = random.random()
+        if rand_val < 0.08:  # 8% chance of retryable error
             raise RetryableError("SMS API rate limit exceeded")
-        elif random.random() < 0.04:  # 4% chance of non-retryable error
+        elif rand_val < 0.12:  # Next 4% chance of non-retryable error (0.08 to 0.12)
             raise NonRetryableError("Phone number is blocked or invalid")
         
         # Simulate successful sending

@@ -73,7 +73,7 @@ class TestHealthEndpoints:
         assert result['initialization_duration_seconds'] >= 0
 
     @pytest.mark.asyncio
-    async def test_readiness_check_healthy(self, mock_health_dependencies):
+    async def test_readiness_check_healthy(self):
         """Test readiness check when all dependencies are healthy."""
         from api.health import readiness_check
         

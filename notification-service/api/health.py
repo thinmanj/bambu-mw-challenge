@@ -2,7 +2,7 @@
 Health check endpoints for Kubernetes probes and monitoring.
 """
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, status
 from database.connection import get_redis_client, get_engine
 from core.resilience.bulkhead import get_bulkhead_executor
@@ -20,7 +20,7 @@ def mark_startup_complete():
     """Mark the application startup as complete"""
     global _startup_complete, _startup_time
     _startup_complete = True
-    _startup_time = datetime.utcnow()
+    _startup_time = datetime.now(timezone.utc)
 
 async def check_database_connection() -> bool:
     """Check if database connection is healthy"""
@@ -56,8 +56,8 @@ async def liveness_check():
     return {
         "status": "alive",
         "service": "notification-service",
-        "timestamp": datetime.utcnow().isoformat(),
-        "uptime_seconds": (datetime.utcnow() - _startup_time).total_seconds() if _startup_time else 0
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "uptime_seconds": (datetime.now(timezone.utc) - _startup_time).total_seconds() if _startup_time else 0
     }
 
 @health_router.get("/ready")
@@ -97,7 +97,7 @@ async def readiness_check():
     response = {
         "status": "ready" if healthy else "not_ready",
         "service": "notification-service",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "checks": checks
     }
     
@@ -124,7 +124,7 @@ async def startup_check():
             detail={
                 "status": "starting",
                 "service": "notification-service",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "message": "Application is still initializing"
             }
         )
@@ -132,9 +132,9 @@ async def startup_check():
     return {
         "status": "started",
         "service": "notification-service",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "startup_time": _startup_time.isoformat() if _startup_time else None,
-        "initialization_duration_seconds": (datetime.utcnow() - _startup_time).total_seconds() if _startup_time else 0
+        "initialization_duration_seconds": (datetime.now(timezone.utc) - _startup_time).total_seconds() if _startup_time else 0
     }
 
 # Legacy health endpoint for backward compatibility
@@ -164,7 +164,7 @@ async def health_check():
     response = {
         "status": "healthy" if healthy else "unhealthy",
         "service": "notification-service",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         **checks
     }
     
@@ -195,7 +195,7 @@ async def bulkhead_health_check():
         response = {
             "status": overall_status,
             "service": "notification-service-bulkhead",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             **health_info
         }
         
@@ -212,7 +212,7 @@ async def bulkhead_health_check():
         error_response = {
             "status": "error",
             "service": "notification-service-bulkhead",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "error": str(e),
             "message": "Failed to get bulkhead health information"
         }

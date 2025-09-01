@@ -4,7 +4,7 @@ Unit tests for core repositories.
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 
 from core.models import NotificationTemplate, NotificationLog, UserPreference
 from core.repositories import (
@@ -40,6 +40,10 @@ class MockNotificationTemplateUpdate:
 
 class MockNotificationLogCreate:
     def __init__(self, **kwargs):
+        # Set default values for required fields
+        self.template_name = kwargs.get('template_name', 'test_template')
+        self.notification_type = kwargs.get('notification_type', kwargs.get('type', 'email'))
+        # Set all other fields
         for key, value in kwargs.items():
             setattr(self, key, value)
     
@@ -89,8 +93,8 @@ class MockNotificationTemplateRepository:
             body=template_data.body,
             type=template_data.type,
             variables=getattr(template_data, 'variables', None),
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
         )
         self._templates[self._id_counter] = template
         self._id_counter += 1
@@ -125,7 +129,7 @@ class MockNotificationTemplateRepository:
         update_dict = update_data.model_dump(exclude_unset=True)
         for field, value in update_dict.items():
             setattr(template, field, value)
-        template.updated_at = datetime.utcnow()
+        template.updated_at = datetime.now(timezone.utc)
         return template
     
     async def delete(self, template_id):
@@ -151,7 +155,7 @@ class MockNotificationLogRepository:
             sent_at=getattr(log_data, 'sent_at', None),
             error_message=getattr(log_data, 'error_message', None),
             notification_metadata=getattr(log_data, 'notification_metadata', {}),
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         )
         self._logs[self._id_counter] = log
         self._id_counter += 1
@@ -210,8 +214,8 @@ class MockUserPreferenceRepository:
             push_enabled=getattr(preference_data, 'push_enabled', True),
             quiet_hours_start=getattr(preference_data, 'quiet_hours_start', None),
             quiet_hours_end=getattr(preference_data, 'quiet_hours_end', None),
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
         )
         self._preferences[preference_data.user_id] = preference
         self._id_counter += 1
@@ -235,7 +239,7 @@ class MockUserPreferenceRepository:
         update_dict = update_data.model_dump(exclude_unset=True)
         for field, value in update_dict.items():
             setattr(preference, field, value)
-        preference.updated_at = datetime.utcnow()
+        preference.updated_at = datetime.now(timezone.utc)
         return preference
     
     async def upsert(self, user_id, preference_data):
@@ -244,7 +248,7 @@ class MockUserPreferenceRepository:
             # Update existing
             for key, value in preference_data.model_dump().items():
                 setattr(existing, key, value)
-            existing.updated_at = datetime.utcnow()
+            existing.updated_at = datetime.now(timezone.utc)
             return existing
         else:
             # Create new
@@ -291,12 +295,13 @@ class TestNotificationTemplateRepository:
         assert result.id is not None
 
     @pytest.mark.asyncio
-    async def test_get_template_by_id(self, async_db_session):
+    async def test_get_template_by_id(self):
         """Test getting template by ID."""
-        repo = NotificationTemplateRepository(async_db_session)
+        db_session = AsyncMock()
+        repo = MockNotificationTemplateRepository(db_session)
         
         # Create template first
-        template_data = NotificationTemplateCreate(
+        template_data = MockNotificationTemplateCreate(
             name="get_by_id_test",
             body="Test body",
             type="email"
@@ -312,9 +317,10 @@ class TestNotificationTemplateRepository:
         assert result.body == "Test body"
 
     @pytest.mark.asyncio
-    async def test_get_template_by_id_not_found(self, async_db_session):
+    async def test_get_template_by_id_not_found(self):
         """Test getting non-existent template by ID."""
-        repo = NotificationTemplateRepository(async_db_session)
+        db_session = AsyncMock()
+        repo = MockNotificationTemplateRepository(db_session)
         
         result = await repo.get_by_id(99999)
         assert result is None
@@ -322,10 +328,10 @@ class TestNotificationTemplateRepository:
     @pytest.mark.asyncio
     async def test_get_template_by_name(self, async_db_session):
         """Test getting template by name."""
-        repo = NotificationTemplateRepository(async_db_session)
+        repo = MockNotificationTemplateRepository(async_db_session)
         
         # Create template first
-        template_data = NotificationTemplateCreate(
+        template_data = MockNotificationTemplateCreate(
             name="get_by_name_test",
             body="Test body",
             type="sms"
@@ -343,7 +349,7 @@ class TestNotificationTemplateRepository:
     @pytest.mark.asyncio
     async def test_get_template_by_name_not_found(self, async_db_session):
         """Test getting non-existent template by name."""
-        repo = NotificationTemplateRepository(async_db_session)
+        repo = MockNotificationTemplateRepository(async_db_session)
         
         result = await repo.get_by_name("nonexistent")
         assert result is None
@@ -351,11 +357,11 @@ class TestNotificationTemplateRepository:
     @pytest.mark.asyncio
     async def test_get_all_templates(self, async_db_session):
         """Test getting all templates with pagination."""
-        repo = NotificationTemplateRepository(async_db_session)
+        repo = MockNotificationTemplateRepository(async_db_session)
         
         # Create multiple templates
         templates = [
-            NotificationTemplateCreate(name=f"template_{i}", body=f"Body {i}", type="email")
+            MockNotificationTemplateCreate(name=f"template_{i}", body=f"Body {i}", type="email")
             for i in range(5)
         ]
         
@@ -371,11 +377,11 @@ class TestNotificationTemplateRepository:
     @pytest.mark.asyncio
     async def test_get_all_templates_with_pagination(self, async_db_session):
         """Test getting templates with pagination parameters."""
-        repo = NotificationTemplateRepository(async_db_session)
+        repo = MockNotificationTemplateRepository(async_db_session)
         
         # Create templates
         templates = [
-            NotificationTemplateCreate(name=f"paginated_{i}", body=f"Body {i}", type="email")
+            MockNotificationTemplateCreate(name=f"paginated_{i}", body=f"Body {i}", type="email")
             for i in range(10)
         ]
         
@@ -390,12 +396,12 @@ class TestNotificationTemplateRepository:
     @pytest.mark.asyncio
     async def test_get_all_templates_with_type_filter(self, async_db_session):
         """Test getting templates filtered by type."""
-        repo = NotificationTemplateRepository(async_db_session)
+        repo = MockNotificationTemplateRepository(async_db_session)
         
         # Create templates of different types
-        email_template = NotificationTemplateCreate(name="email_test", body="Email", type="email")
-        sms_template = NotificationTemplateCreate(name="sms_test", body="SMS", type="sms")
-        push_template = NotificationTemplateCreate(name="push_test", body="Push", type="push")
+        email_template = MockNotificationTemplateCreate(name="email_test", body="Email", type="email")
+        sms_template = MockNotificationTemplateCreate(name="sms_test", body="SMS", type="sms")
+        push_template = MockNotificationTemplateCreate(name="push_test", body="Push", type="push")
         
         await repo.create(email_template)
         await repo.create(sms_template)
@@ -414,14 +420,14 @@ class TestNotificationTemplateRepository:
     @pytest.mark.asyncio
     async def test_count_templates(self, async_db_session):
         """Test counting templates."""
-        repo = NotificationTemplateRepository(async_db_session)
+        repo = MockNotificationTemplateRepository(async_db_session)
         
         # Initially should be 0
         initial_count = await repo.count()
         
         # Create some templates
         templates = [
-            NotificationTemplateCreate(name=f"count_test_{i}", body=f"Body {i}", type="email")
+            MockNotificationTemplateCreate(name=f"count_test_{i}", body=f"Body {i}", type="email")
             for i in range(3)
         ]
         
@@ -435,11 +441,11 @@ class TestNotificationTemplateRepository:
     @pytest.mark.asyncio
     async def test_count_templates_with_filter(self, async_db_session):
         """Test counting templates with type filter."""
-        repo = NotificationTemplateRepository(async_db_session)
+        repo = MockNotificationTemplateRepository(async_db_session)
         
         # Create templates of different types
-        email_template = NotificationTemplateCreate(name="count_email", body="Email", type="email")
-        sms_template = NotificationTemplateCreate(name="count_sms", body="SMS", type="sms")
+        email_template = MockNotificationTemplateCreate(name="count_email", body="Email", type="email")
+        sms_template = MockNotificationTemplateCreate(name="count_sms", body="SMS", type="sms")
         
         await repo.create(email_template)
         await repo.create(sms_template)
@@ -454,10 +460,10 @@ class TestNotificationTemplateRepository:
     @pytest.mark.asyncio
     async def test_update_template(self, async_db_session):
         """Test updating a template."""
-        repo = NotificationTemplateRepository(async_db_session)
+        repo = MockNotificationTemplateRepository(async_db_session)
         
         # Create template first
-        template_data = NotificationTemplateCreate(
+        template_data = MockNotificationTemplateCreate(
             name="update_test",
             subject="Original Subject",
             body="Original body",
@@ -466,7 +472,7 @@ class TestNotificationTemplateRepository:
         created_template = await repo.create(template_data)
         
         # Update the template
-        update_data = NotificationTemplateUpdate(
+        update_data = MockNotificationTemplateUpdate(
             subject="Updated Subject",
             body="Updated body"
         )
@@ -483,9 +489,9 @@ class TestNotificationTemplateRepository:
     @pytest.mark.asyncio
     async def test_update_template_not_found(self, async_db_session):
         """Test updating non-existent template."""
-        repo = NotificationTemplateRepository(async_db_session)
+        repo = MockNotificationTemplateRepository(async_db_session)
         
-        update_data = NotificationTemplateUpdate(subject="Updated Subject")
+        update_data = MockNotificationTemplateUpdate(subject="Updated Subject")
         result = await repo.update(99999, update_data)
         
         assert result is None
@@ -493,10 +499,10 @@ class TestNotificationTemplateRepository:
     @pytest.mark.asyncio
     async def test_delete_template(self, async_db_session):
         """Test deleting a template."""
-        repo = NotificationTemplateRepository(async_db_session)
+        repo = MockNotificationTemplateRepository(async_db_session)
         
         # Create template first
-        template_data = NotificationTemplateCreate(
+        template_data = MockNotificationTemplateCreate(
             name="delete_test",
             body="To be deleted",
             type="email"
@@ -514,7 +520,7 @@ class TestNotificationTemplateRepository:
     @pytest.mark.asyncio
     async def test_delete_template_not_found(self, async_db_session):
         """Test deleting non-existent template."""
-        repo = NotificationTemplateRepository(async_db_session)
+        repo = MockNotificationTemplateRepository(async_db_session)
         
         result = await repo.delete(99999)
         assert result is False
@@ -527,14 +533,14 @@ class TestNotificationLogRepository:
     @pytest.mark.asyncio
     async def test_log_repository_initialization(self, async_db_session):
         """Test repository initialization."""
-        repo = NotificationLogRepository(async_db_session)
+        repo = MockNotificationLogRepository(async_db_session)
         assert repo.db == async_db_session
 
     @pytest.mark.asyncio
     async def test_create_log(self, async_db_session):
         """Test creating a new log entry."""
-        repo = NotificationLogRepository(async_db_session)
-        log_data = NotificationLogCreate(
+        repo = MockNotificationLogRepository(async_db_session)
+        log_data = MockNotificationLogCreate(
             user_id=123,
             type="email",
             status="pending",
@@ -553,10 +559,10 @@ class TestNotificationLogRepository:
     @pytest.mark.asyncio
     async def test_get_log_by_id(self, async_db_session):
         """Test getting log by ID."""
-        repo = NotificationLogRepository(async_db_session)
+        repo = MockNotificationLogRepository(async_db_session)
         
         # Create log first
-        log_data = NotificationLogCreate(
+        log_data = MockNotificationLogCreate(
             user_id=456,
             type="sms",
             status="sent"
@@ -575,7 +581,7 @@ class TestNotificationLogRepository:
     @pytest.mark.asyncio
     async def test_get_log_by_id_not_found(self, async_db_session):
         """Test getting non-existent log by ID."""
-        repo = NotificationLogRepository(async_db_session)
+        repo = MockNotificationLogRepository(async_db_session)
         
         result = await repo.get_by_id(99999)
         assert result is None
@@ -583,14 +589,14 @@ class TestNotificationLogRepository:
     @pytest.mark.asyncio
     async def test_get_logs_by_user_id(self, async_db_session):
         """Test getting logs by user ID."""
-        repo = NotificationLogRepository(async_db_session)
+        repo = MockNotificationLogRepository(async_db_session)
         user_id = 789
         
         # Create logs for the user
         logs = [
-            NotificationLogCreate(user_id=user_id, type="email", status="sent"),
-            NotificationLogCreate(user_id=user_id, type="sms", status="pending"),
-            NotificationLogCreate(user_id=999, type="email", status="sent")  # Different user
+            MockNotificationLogCreate(user_id=user_id, type="email", status="sent"),
+            MockNotificationLogCreate(user_id=user_id, type="sms", status="pending"),
+            MockNotificationLogCreate(user_id=999, type="email", status="sent")  # Different user
         ]
         
         for log_data in logs:
@@ -605,12 +611,12 @@ class TestNotificationLogRepository:
     @pytest.mark.asyncio
     async def test_get_logs_by_user_id_with_pagination(self, async_db_session):
         """Test getting logs by user ID with pagination."""
-        repo = NotificationLogRepository(async_db_session)
+        repo = MockNotificationLogRepository(async_db_session)
         user_id = 1000
         
         # Create multiple logs for the user
         logs = [
-            NotificationLogCreate(user_id=user_id, type="email", status="sent")
+            MockNotificationLogCreate(user_id=user_id, type="email", status="sent")
             for _ in range(10)
         ]
         
@@ -626,11 +632,11 @@ class TestNotificationLogRepository:
     @pytest.mark.asyncio
     async def test_get_all_logs(self, async_db_session):
         """Test getting all logs."""
-        repo = NotificationLogRepository(async_db_session)
+        repo = MockNotificationLogRepository(async_db_session)
         
         # Create logs
         logs = [
-            NotificationLogCreate(user_id=i, type="email", status="sent")
+            MockNotificationLogCreate(user_id=i, type="email", status="sent")
             for i in range(5)
         ]
         
@@ -646,14 +652,14 @@ class TestNotificationLogRepository:
     @pytest.mark.asyncio
     async def test_get_all_logs_with_filters(self, async_db_session):
         """Test getting logs with various filters."""
-        repo = NotificationLogRepository(async_db_session)
+        repo = MockNotificationLogRepository(async_db_session)
         
         # Create logs with different attributes
         logs = [
-            NotificationLogCreate(user_id=1, type="email", status="sent"),
-            NotificationLogCreate(user_id=1, type="sms", status="pending"),
-            NotificationLogCreate(user_id=2, type="email", status="failed"),
-            NotificationLogCreate(user_id=3, type="push", status="sent")
+            MockNotificationLogCreate(user_id=1, type="email", status="sent"),
+            MockNotificationLogCreate(user_id=1, type="sms", status="pending"),
+            MockNotificationLogCreate(user_id=2, type="email", status="failed"),
+            MockNotificationLogCreate(user_id=3, type="push", status="sent")
         ]
         
         for log_data in logs:
@@ -674,14 +680,14 @@ class TestNotificationLogRepository:
     @pytest.mark.asyncio
     async def test_count_logs(self, async_db_session):
         """Test counting logs."""
-        repo = NotificationLogRepository(async_db_session)
+        repo = MockNotificationLogRepository(async_db_session)
         
         # Get initial count
         initial_count = await repo.count()
         
         # Create logs
         logs = [
-            NotificationLogCreate(user_id=i, type="email", status="sent")
+            MockNotificationLogCreate(user_id=i, type="email", status="sent")
             for i in range(3)
         ]
         
@@ -695,13 +701,13 @@ class TestNotificationLogRepository:
     @pytest.mark.asyncio
     async def test_count_logs_with_filters(self, async_db_session):
         """Test counting logs with filters."""
-        repo = NotificationLogRepository(async_db_session)
+        repo = MockNotificationLogRepository(async_db_session)
         
         # Create logs with different attributes
         logs = [
-            NotificationLogCreate(user_id=1, type="email", status="sent"),
-            NotificationLogCreate(user_id=1, type="sms", status="sent"),
-            NotificationLogCreate(user_id=2, type="email", status="failed")
+            MockNotificationLogCreate(user_id=1, type="email", status="sent"),
+            MockNotificationLogCreate(user_id=1, type="sms", status="sent"),
+            MockNotificationLogCreate(user_id=2, type="email", status="failed")
         ]
         
         for log_data in logs:
@@ -719,10 +725,10 @@ class TestNotificationLogRepository:
     @pytest.mark.asyncio
     async def test_update_log(self, async_db_session):
         """Test updating a log entry."""
-        repo = NotificationLogRepository(async_db_session)
+        repo = MockNotificationLogRepository(async_db_session)
         
         # Create log first
-        log_data = NotificationLogCreate(
+        log_data = MockNotificationLogCreate(
             user_id=123,
             type="email",
             status="pending"
@@ -730,9 +736,9 @@ class TestNotificationLogRepository:
         created_log = await repo.create(log_data)
         
         # Update the log
-        update_data = NotificationLogUpdate(
+        update_data = MockNotificationLogUpdate(
             status="sent",
-            sent_at=datetime.utcnow(),
+            sent_at=datetime.now(timezone.utc),
             error_message=None
         )
         
@@ -747,9 +753,9 @@ class TestNotificationLogRepository:
     @pytest.mark.asyncio
     async def test_update_log_not_found(self, async_db_session):
         """Test updating non-existent log."""
-        repo = NotificationLogRepository(async_db_session)
+        repo = MockNotificationLogRepository(async_db_session)
         
-        update_data = NotificationLogUpdate(status="sent")
+        update_data = MockNotificationLogUpdate(status="sent")
         result = await repo.update(99999, update_data)
         
         assert result is None
@@ -762,14 +768,14 @@ class TestUserPreferenceRepository:
     @pytest.mark.asyncio
     async def test_preference_repository_initialization(self, async_db_session):
         """Test repository initialization."""
-        repo = UserPreferenceRepository(async_db_session)
+        repo = MockUserPreferenceRepository(async_db_session)
         assert repo.db == async_db_session
 
     @pytest.mark.asyncio
     async def test_create_user_preference(self, async_db_session):
         """Test creating user preferences."""
-        repo = UserPreferenceRepository(async_db_session)
-        preference_data = UserPreferenceCreate(
+        repo = MockUserPreferenceRepository(async_db_session)
+        preference_data = MockUserPreferenceCreate(
             user_id=123,
             email_enabled=True,
             sms_enabled=False,
@@ -792,10 +798,10 @@ class TestUserPreferenceRepository:
     @pytest.mark.asyncio
     async def test_get_preference_by_user_id(self, async_db_session):
         """Test getting preferences by user ID."""
-        repo = UserPreferenceRepository(async_db_session)
+        repo = MockUserPreferenceRepository(async_db_session)
         
         # Create preference first
-        preference_data = UserPreferenceCreate(
+        preference_data = MockUserPreferenceCreate(
             user_id=456,
             email_enabled=False
         )
@@ -811,7 +817,7 @@ class TestUserPreferenceRepository:
     @pytest.mark.asyncio
     async def test_get_preference_by_user_id_not_found(self, async_db_session):
         """Test getting non-existent preference by user ID."""
-        repo = UserPreferenceRepository(async_db_session)
+        repo = MockUserPreferenceRepository(async_db_session)
         
         result = await repo.get_by_user_id(99999)
         assert result is None
@@ -819,11 +825,11 @@ class TestUserPreferenceRepository:
     @pytest.mark.asyncio
     async def test_get_all_preferences(self, async_db_session):
         """Test getting all preferences."""
-        repo = UserPreferenceRepository(async_db_session)
+        repo = MockUserPreferenceRepository(async_db_session)
         
         # Create preferences
         preferences = [
-            UserPreferenceCreate(user_id=i, email_enabled=True)
+            MockUserPreferenceCreate(user_id=i, email_enabled=True)
             for i in range(1000, 1005)
         ]
         
@@ -839,11 +845,11 @@ class TestUserPreferenceRepository:
     @pytest.mark.asyncio
     async def test_get_all_preferences_with_pagination(self, async_db_session):
         """Test getting preferences with pagination."""
-        repo = UserPreferenceRepository(async_db_session)
+        repo = MockUserPreferenceRepository(async_db_session)
         
         # Create preferences
         preferences = [
-            UserPreferenceCreate(user_id=i, email_enabled=True)
+            MockUserPreferenceCreate(user_id=i, email_enabled=True)
             for i in range(2000, 2010)
         ]
         
@@ -858,14 +864,14 @@ class TestUserPreferenceRepository:
     @pytest.mark.asyncio
     async def test_count_preferences(self, async_db_session):
         """Test counting preferences."""
-        repo = UserPreferenceRepository(async_db_session)
+        repo = MockUserPreferenceRepository(async_db_session)
         
         # Get initial count
         initial_count = await repo.count()
         
         # Create preferences
         preferences = [
-            UserPreferenceCreate(user_id=i, email_enabled=True)
+            MockUserPreferenceCreate(user_id=i, email_enabled=True)
             for i in range(3000, 3003)
         ]
         
@@ -879,10 +885,10 @@ class TestUserPreferenceRepository:
     @pytest.mark.asyncio
     async def test_update_preference(self, async_db_session):
         """Test updating user preferences."""
-        repo = UserPreferenceRepository(async_db_session)
+        repo = MockUserPreferenceRepository(async_db_session)
         
         # Create preference first
-        preference_data = UserPreferenceCreate(
+        preference_data = MockUserPreferenceCreate(
             user_id=789,
             email_enabled=True,
             sms_enabled=True
@@ -890,7 +896,7 @@ class TestUserPreferenceRepository:
         created_preference = await repo.create(preference_data)
         
         # Update the preference
-        update_data = UserPreferenceUpdate(
+        update_data = MockUserPreferenceUpdate(
             email_enabled=False,
             quiet_hours_start=time(23, 0)
         )
@@ -906,9 +912,9 @@ class TestUserPreferenceRepository:
     @pytest.mark.asyncio
     async def test_update_preference_not_found(self, async_db_session):
         """Test updating non-existent preference."""
-        repo = UserPreferenceRepository(async_db_session)
+        repo = MockUserPreferenceRepository(async_db_session)
         
-        update_data = UserPreferenceUpdate(email_enabled=False)
+        update_data = MockUserPreferenceUpdate(email_enabled=False)
         result = await repo.update(99999, update_data)
         
         assert result is None
@@ -916,9 +922,9 @@ class TestUserPreferenceRepository:
     @pytest.mark.asyncio
     async def test_upsert_preference_create(self, async_db_session):
         """Test upsert creating new preference."""
-        repo = UserPreferenceRepository(async_db_session)
+        repo = MockUserPreferenceRepository(async_db_session)
         
-        preference_data = UserPreferenceCreate(
+        preference_data = MockUserPreferenceCreate(
             user_id=9999,
             email_enabled=False
         )
@@ -932,17 +938,17 @@ class TestUserPreferenceRepository:
     @pytest.mark.asyncio
     async def test_upsert_preference_update(self, async_db_session):
         """Test upsert updating existing preference."""
-        repo = UserPreferenceRepository(async_db_session)
+        repo = MockUserPreferenceRepository(async_db_session)
         
         # Create initial preference
-        initial_data = UserPreferenceCreate(
+        initial_data = MockUserPreferenceCreate(
             user_id=8888,
             email_enabled=True
         )
         await repo.create(initial_data)
         
         # Upsert with new data
-        upsert_data = UserPreferenceCreate(
+        upsert_data = MockUserPreferenceCreate(
             user_id=8888,
             email_enabled=False,
             sms_enabled=False
@@ -958,10 +964,10 @@ class TestUserPreferenceRepository:
     @pytest.mark.asyncio
     async def test_delete_preference(self, async_db_session):
         """Test deleting user preferences."""
-        repo = UserPreferenceRepository(async_db_session)
+        repo = MockUserPreferenceRepository(async_db_session)
         
         # Create preference first
-        preference_data = UserPreferenceCreate(
+        preference_data = MockUserPreferenceCreate(
             user_id=7777,
             email_enabled=True
         )
@@ -978,7 +984,7 @@ class TestUserPreferenceRepository:
     @pytest.mark.asyncio
     async def test_delete_preference_not_found(self, async_db_session):
         """Test deleting non-existent preference."""
-        repo = UserPreferenceRepository(async_db_session)
+        repo = MockUserPreferenceRepository(async_db_session)
         
         result = await repo.delete(99999)
         assert result is False
