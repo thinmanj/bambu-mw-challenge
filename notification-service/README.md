@@ -85,7 +85,7 @@ Only recommended if you already have Postgres and Redis running locally and are 
 1) Set environment variables (examples below in “Configuration”).
 2) Create and activate a virtual environment.
 3) Install dependencies (pip):
-- pip install -r requirements.txt
+- pip install -r requirements.txt -r requirements-test.txt
 
 4) Start the API server
 - uvicorn notification_service.main:app --host 0.0.0.0 --port 8001 --log-level info
@@ -111,9 +111,13 @@ Guidance:
 
 ## Running tests and coverage
 From the notification-service directory:
-- pytest -q
-- pytest -q --maxfail=1 -k "unit and not integration"
-- pytest --cov=notification_service --cov-report=term-missing
+- pytest --cov --cov-report=term-missing --cov-report=html --cov-report=xml -v
+
+Alternatively you can run it on the docker-compose:
+- docker-compose up notification-service
+  docker exec -if <notification-service id> bash
+  pytest --cov --cov-report=term-missing --cov-report=html --cov-report=xml -v
+
 
 Notes:
 - Some integration tests may expect Postgres/Redis. Use Docker Compose for the full stack.
@@ -130,8 +134,8 @@ All endpoints use standardized Pydantic schema models for request/response, incl
 
 ## Health checks
 The service exposes standard health endpoints:
-- GET /health/liveness
-- GET /health/readiness
+- GET /health/live
+- GET /health/ready
 - GET /health/startup
 
 The readiness endpoint checks core dependencies (e.g., DB/Redis) and returns HTTP 503 if not ready. Use these endpoints for container health probes in Docker/Kubernetes.
@@ -145,7 +149,7 @@ Build and push an image:
 - docker push your-registry/notification-service:VERSION
 
 Recommended runtime environment variables (examples):
-- PORT=8002
+- PORT=8001
 - LOG_LEVEL=info
 - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/notifications
 - REDIS_URL=redis://redis:6379/0
