@@ -168,8 +168,8 @@ If using the provided docker-entrypoint.sh, RUN_MIGRATIONS=true will attempt to 
 - Expose the service via ClusterIP/Ingress as needed.
 
 Probe examples (illustrative):
-- readinessProbe: GET /health/readiness
-- livenessProbe:  GET /health/liveness
+- readinessProbe: GET /health/ready
+- livenessProbe:  GET /health/live
 - startupProbe:   GET /health/startup
 
 
